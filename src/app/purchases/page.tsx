@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createBrowserClient } from '@supabase/ssr';
-import { Search, Trash2, Plus, Truck, Package, Check, X, PackagePlus } from "lucide-react";
+import { Search, Plus, Truck, Package, Check, X, PackagePlus } from "lucide-react";
 import CreateSupplierModal from '@/components/CreateSupplierModal';
 import CreateProductModal from '@/components/CreateProductModal';
 
@@ -54,7 +54,6 @@ export default function NewPurchasePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      // On charge TOUS les produits (limite par défaut de Supabase est souvent 1000, suffisant pour l'instant)
       const { data: pData } = await supabase.from('products').select('id, code_barre, nom, prix_achat, stock_actuel');
       const { data: sData } = await supabase.from('suppliers').select('id, nom').order('nom');
       
@@ -64,15 +63,15 @@ export default function NewPurchasePage() {
     loadData();
   }, []);
 
-  // FILTRAGE ROBUSTE
+  // FILTRAGE - Ne rien afficher si recherche vide
   const filteredProds = products.filter(p => {
     const search = prodSearch.toLowerCase().trim();
-    if (!search) return true; // Si recherche vide, on retourne tout (limité par le slice)
+    if (!search) return false;
     return (
       (p.nom && p.nom.toLowerCase().includes(search)) || 
       (p.code_barre && p.code_barre.toLowerCase().includes(search))
     );
-  }).slice(0, 50); // Limite d'affichage pour performance
+  }).slice(0, 50);
 
   // AJOUT LIGNE
   const addLine = (product: Product) => {
@@ -83,11 +82,9 @@ export default function NewPurchasePage() {
       }
       return [...prev, { product_id: product.id, nom: product.nom, qty: 1, price: product.prix_achat || 0 }];
     });
-    // Reset après ajout
     setProdSearch("");
     setShowProdResults(false); 
     setHighlightedIndex(0);
-    // On garde le focus pour enchainer
     prodInputRef.current?.focus();
   };
 
@@ -99,14 +96,16 @@ export default function NewPurchasePage() {
 
   // NAVIGATION CLAVIER
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showProdResults) return;
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlightedIndex(prev => (prev < filteredProds.length - 1 ? prev + 1 : prev));
-      resultsRef.current?.children[highlightedIndex + 1]?.scrollIntoView({ block: 'nearest' });
+      resultsRef.current?.children[0]?.children[1]?.children[highlightedIndex + 1]?.scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlightedIndex(prev => (prev > 0 ? prev - 1 : prev));
-      resultsRef.current?.children[highlightedIndex - 1]?.scrollIntoView({ block: 'nearest' });
+      resultsRef.current?.children[0]?.children[1]?.children[highlightedIndex - 1]?.scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (filteredProds.length > 0) addLine(filteredProds[highlightedIndex]);
@@ -133,7 +132,6 @@ export default function NewPurchasePage() {
     if (!selectedSupplier) return alert("Veuillez choisir un fournisseur !");
     setIsSubmitting(true);
 
-    // PRÉPARATION STRICTE DES DONNÉES
     const payload = lines.map(l => ({ 
       product_id: l.product_id, 
       quantite: Number(l.qty), 
@@ -194,22 +192,23 @@ export default function NewPurchasePage() {
         </div>
       </div>
 
-      {/* RECHERCHE AVEC LISTE CORRECTE */}
+      {/* RECHERCHE COMPACTE */}
       <div className="relative z-20">
-        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg shadow border-2 border-blue-500">
-          <Search className="text-blue-500 ml-2" />
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-3 rounded-lg shadow border-2 border-blue-500">
+          <Search className="text-blue-500" size={20} />
           <input 
             ref={prodInputRef}
             type="text" 
             placeholder="Code-barre ou nom article..." 
-            className="w-full p-2 bg-transparent text-lg font-medium outline-none text-gray-900 dark:text-white"
+            className="flex-1 p-2 bg-transparent text-base font-medium outline-none text-gray-900 dark:text-white placeholder-gray-400"
             value={prodSearch}
             onChange={(e) => { 
-                setProdSearch(e.target.value); 
-                setShowProdResults(true); 
-                setHighlightedIndex(0); 
+              setProdSearch(e.target.value); 
+              setShowProdResults(e.target.value.length > 0);
+              setHighlightedIndex(0); 
             }}
-            onFocus={() => setShowProdResults(true)} // AFFICHE LISTE AU CLIC
+            onFocus={() => { if (prodSearch) setShowProdResults(true); }}
+            onBlur={() => setTimeout(() => setShowProdResults(false), 200)}
             onKeyDown={handleKeyDown}
             autoFocus
           />
@@ -222,34 +221,56 @@ export default function NewPurchasePage() {
           </button>
         </div>
 
-        {/* LISTE DÉFILANTE QUI S'AFFICHE SI showProdResults EST VRAI */}
-        {showProdResults && (
-          <div ref={resultsRef} className="absolute top-full left-0 w-full bg-white dark:bg-slate-800 shadow-xl rounded-lg mt-1 border border-gray-200 dark:border-slate-600 overflow-y-auto max-h-80 z-30">
+        {/* LISTE DÉROULANTE COMPACTE EN TABLEAU */}
+        {showProdResults && prodSearch && (
+          <div ref={resultsRef} className="absolute top-full left-0 w-full bg-white dark:bg-slate-800 shadow-2xl rounded-lg mt-2 border border-gray-200 dark:border-slate-600 overflow-hidden z-30 max-h-[400px] overflow-y-auto">
             {filteredProds.length > 0 ? (
-              filteredProds.map((p, idx) => (
-                <div 
-                  key={p.id}
-                  onMouseDown={(e) => { e.preventDefault(); addLine(p); }} // CLIC ROBUSTE
-                  className={`p-3 border-b border-gray-100 dark:border-slate-700 cursor-pointer flex justify-between items-center transition-colors
-                    ${idx === highlightedIndex ? "bg-blue-100 dark:bg-blue-900/50 border-l-4 border-l-blue-500" : "hover:bg-gray-50 dark:hover:bg-slate-700"}
-                  `}
-                >
-                  <div>
-                    <div className="font-bold text-gray-800 dark:text-white">{p.nom}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">Ref: {p.code_barre || 'N/A'} • Stock: {p.stock_actuel}</div>
-                  </div>
-                  <div className="font-bold text-blue-600">{p.prix_achat} DA</div>
-                </div>
-              ))
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900 sticky top-0">
+                  <tr className="border-b border-gray-200 dark:border-slate-700">
+                    <th className="text-left p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Article</th>
+                    <th className="text-left p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Réf</th>
+                    <th className="text-center p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Stock</th>
+                    <th className="text-right p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Prix Achat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProds.map((p, idx) => (
+                    <tr 
+                      key={p.id}
+                      onMouseDown={(e) => { e.preventDefault(); addLine(p); }}
+                      className={`cursor-pointer border-b border-gray-100 dark:border-slate-700 transition-colors
+                        ${idx === highlightedIndex 
+                          ? "bg-blue-50 dark:bg-blue-900/30 border-l-4 border-l-blue-500" 
+                          : "hover:bg-gray-50 dark:hover:bg-slate-700/50"}
+                      `}
+                    >
+                      <td className="p-2 font-medium text-gray-900 dark:text-white">{p.nom}</td>
+                      <td className="p-2 text-gray-500 dark:text-gray-400 font-mono text-xs">{p.code_barre || '-'}</td>
+                      <td className="p-2 text-center">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          p.stock_actuel > 10 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                            : p.stock_actuel > 0
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {p.stock_actuel}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right font-bold text-blue-600 dark:text-blue-400">{p.prix_achat.toLocaleString()} DA</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              // Affichage "Aucun résultat" avec bouton création
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400 italic">
-                <p className="mb-2">{prodSearch ? `Pas de résultat pour "${prodSearch}"` : "Liste des articles"}</p>
+              <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                <p className="mb-2">Aucun résultat pour "{prodSearch}"</p>
                 <button 
-                    onClick={() => setIsProductModalOpen(true)}
-                    className="text-blue-600 hover:underline text-sm font-bold"
+                  onClick={() => setIsProductModalOpen(true)}
+                  className="text-blue-600 hover:underline font-bold"
                 >
-                    + Créer un nouvel article
+                  + Créer un nouvel article
                 </button>
               </div>
             )}

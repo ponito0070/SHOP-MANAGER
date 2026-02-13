@@ -175,25 +175,30 @@ export async function generateBRPDF(
 ) {
   const { data: purchaseData, error } = await supabase
     .from("purchases")
-    .select(
-      `
+    .select(`
       *,
-      suppliers: suppliers!purchases_fournisseur_fkey (nom),
       purchase_items (
         quantite,
         prix_achat_unitaire,
         total_ligne,
         products (nom, code_barre)
       )
-    `
-    )
+    `)
     .eq("id", purchaseId)
     .single();
 
-  if (error || !purchaseData) {
+  if (error) {
     console.error("Erreur récupération achat:", error);
     return;
   }
+
+  if (!purchaseData) {
+    console.error("Aucune donnée d'achat trouvée pour l'ID:", purchaseId);
+    return;
+  }
+
+  // Le fournisseur est stocké directement comme texte dans la colonne "fournisseur"
+  const supplierName = purchaseData.fournisseur || "N/A";
 
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -226,7 +231,7 @@ export async function generateBRPDF(
     42
   );
   doc.text(
-    `Fournisseur: ${purchaseData.suppliers?.nom || "N/A"}`,
+    `Fournisseur: ${supplierName}`,
     20,
     48
   );

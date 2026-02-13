@@ -20,7 +20,9 @@ interface Purchase {
   reference: string;
   total_achat: number;
   date_achat: string;
-  fournisseur: string | null;
+  fournisseur: string | null; // Ancienne colonne texte (garde pour compatibilité)
+  supplier_id: string | null; // Nouvelle colonne UUID
+  suppliers?: { nom: string } | null;
 }
 
 export default function PurchasesHistoryPage() {
@@ -42,19 +44,53 @@ export default function PurchasesHistoryPage() {
   const fetchPurchases = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
+    // Récupérer d'abord les achats
+    const { data: purchasesData, error: purchasesError } = await supabase
       .from("purchases")
       .select("*")
       .gte("date_achat", `${startDate}T00:00:00`)
       .lte("date_achat", `${endDate}T23:59:59`)
       .order("date_achat", { ascending: false });
 
-    if (error) {
-      console.error("Erreur:", error.message);
-    } else {
-      setPurchases(data as Purchase[]);
+    if (purchasesError) {
+      console.error("Erreur:", purchasesError.message);
+      setLoading(false);
+      return;
     }
 
+    // Récupérer tous les fournisseurs
+    const { data: suppliersData } = await supabase
+      .from("suppliers")
+      .select("id, nom");
+
+    // Créer un map pour recherche rapide
+    const suppliersMap = new Map(
+      suppliersData?.map(s => [s.id, s.nom]) || []
+    );
+
+    // Enrichir les achats avec les noms des fournisseurs
+    const enrichedPurchases = purchasesData?.map(p => {
+      // Essayer d'abord supplier_id (nouvelle colonne UUID)
+      if (p.supplier_id && suppliersMap.has(p.supplier_id)) {
+        return {
+          ...p,
+          suppliers: { nom: suppliersMap.get(p.supplier_id)! }
+        };
+      }
+      // Sinon chercher par nom dans l'ancienne colonne fournisseur (texte)
+      if (p.fournisseur) {
+        const supplierByName = suppliersData?.find(
+          s => s.nom.toLowerCase() === p.fournisseur.toLowerCase()
+        );
+        return {
+          ...p,
+          suppliers: supplierByName ? { nom: supplierByName.nom } : null
+        };
+      }
+      return { ...p, suppliers: null };
+    }) || [];
+
+    setPurchases(enrichedPurchases as Purchase[]);
     setLoading(false);
   };
 
@@ -71,6 +107,8 @@ export default function PurchasesHistoryPage() {
   const filteredPurchases = purchases.filter(
     (p) =>
       p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.suppliers?.nom &&
+        p.suppliers.nom.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (p.fournisseur &&
         p.fournisseur.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -104,8 +142,8 @@ export default function PurchasesHistoryPage() {
       </div>
 
       {/* FILTRES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
-        {/* Date + flèches */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
+        {/* Période avec flèches */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-gray-500">
             Période
@@ -113,7 +151,7 @@ export default function PurchasesHistoryPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => adjustDate(-1)}
-              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700"
+              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
               title="Jour précédent"
             >
               <ChevronLeft
@@ -151,7 +189,7 @@ export default function PurchasesHistoryPage() {
 
             <button
               onClick={() => adjustDate(1)}
-              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700"
+              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
               title="Jour suivant"
             >
               <ChevronRight
@@ -163,7 +201,7 @@ export default function PurchasesHistoryPage() {
         </div>
 
         {/* Recherche */}
-        <div className="flex flex-col gap-1 md:col-span-2">
+        <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-gray-500">
             Recherche
           </label>
@@ -245,7 +283,7 @@ export default function PurchasesHistoryPage() {
                     </span>
                   </td>
                   <td className="p-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {purchase.fournisseur || "N/A"}
+                    {purchase.suppliers?.nom || purchase.fournisseur || "N/A"}
                   </td>
                   <td className="p-3 text-sm font-bold text-right text-gray-900 dark:text-white tabular-nums">
                     {purchase.total_achat.toLocaleString("fr-FR", {

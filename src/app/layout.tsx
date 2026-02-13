@@ -10,7 +10,8 @@ import {
   BarChart3, 
   Users, 
   Truck, 
-  FileText 
+  FileText,
+  Boxes
 } from "lucide-react";
 import { Providers } from "./providers";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -25,10 +26,7 @@ export default function RootLayout({
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
 
-  // Fonction utilitaire pour styliser les liens actifs
   const getLinkClass = (path: string) => {
-    // Vérifie si le chemin actuel commence par le lien (pour gérer les sous-pages)
-    // Sauf pour la racine '/' sinon tout serait actif
     const isActive = path === '/' 
       ? pathname === '/' 
       : pathname.startsWith(path);
@@ -45,7 +43,6 @@ export default function RootLayout({
       <body className={`${inter.className} bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100 flex h-screen overflow-hidden transition-colors duration-300`}>
         <Providers>
           
-          {/* SIDEBAR (Masquée sur la page Login) */}
           {!isLoginPage && (
             <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl shrink-0 z-50 border-r border-slate-800">
               <div className="p-6 border-b border-slate-700 bg-slate-950/30">
@@ -84,8 +81,21 @@ export default function RootLayout({
                     <Link href="/purchases/history" className={getLinkClass('/purchases/history')}>
                       <FileText size={18} /> Historique Achats
                     </Link>
+                    <Link href="/suppliers" className={getLinkClass('/suppliers')}>
+                      <Truck size={18} /> Fournisseurs
+                    </Link>
+                  </div>
+                </div>
+
+                {/* SECTION INVENTAIRE */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase px-4 mb-2 tracking-widest">Inventaire</div>
+                  <div className="space-y-1">
                     <Link href="/inventory" className={getLinkClass('/inventory')}>
                       <Package size={18} /> Inventaire Global
+                    </Link>
+                    <Link href="/inventory/articles" className={getLinkClass('/inventory/articles')}>
+                      <Boxes size={18} /> Articles
                     </Link>
                   </div>
                 </div>
@@ -112,7 +122,6 @@ export default function RootLayout({
             </aside>
           )}
 
-          {/* ZONE PRINCIPALE */}
           <main className={`flex-1 overflow-auto relative bg-gray-100 dark:bg-slate-950 text-gray-900 dark:text-gray-100 ${isLoginPage ? 'p-0' : 'p-6'}`}>
             {children}
           </main>

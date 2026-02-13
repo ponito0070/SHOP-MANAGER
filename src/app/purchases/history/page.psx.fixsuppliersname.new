@@ -1,0 +1,294 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import {
+  Search,
+  Calendar,
+  Plus,
+  FileText,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+} from "lucide-react";
+import Link from "next/link";
+import { generateBRPDF } from "@/lib/pdfGenerator";
+
+interface Purchase {
+  id: string;
+  reference: string;
+  total_achat: number;
+  date_achat: string;
+  fournisseur: string | null; // Ancien champ (fallback)
+  supplier_id: string | null;
+  suppliers?: {
+    nom: string;
+  } | null;
+}
+
+export default function PurchasesHistoryPage() {
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [startDate, setStartDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [endDate, setEndDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    fetchPurchases();
+  }, [startDate, endDate]);
+
+  // 🔹 FETCH AVEC JOINTURE SUPABASE
+  const fetchPurchases = async () => {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("purchases")
+      .select(
+        `
+        id,
+        reference,
+        total_achat,
+        date_achat,
+        fournisseur,
+        supplier_id,
+        suppliers (
+          nom
+        )
+      `
+      )
+      .gte("date_achat", `${startDate}T00:00:00`)
+      .lte("date_achat", `${endDate}T23:59:59`)
+      .order("date_achat", { ascending: false });
+
+    if (error) {
+      console.error("Erreur fetch purchases:", error.message);
+      setLoading(false);
+      return;
+    }
+
+    setPurchases(data as Purchase[]);
+    setLoading(false);
+  };
+
+  // 🔹 Navigation jours
+  const adjustDate = (days: number) => {
+    const newStart = new Date(startDate);
+    newStart.setDate(newStart.getDate() + days);
+
+    const newEnd = new Date(endDate);
+    newEnd.setDate(newEnd.getDate() + days);
+
+    setStartDate(newStart.toISOString().split("T")[0]);
+    setEndDate(newEnd.toISOString().split("T")[0]);
+  };
+
+  // 🔹 Recherche
+  const filteredPurchases = purchases.filter((p) => {
+    const supplierName =
+      p.suppliers?.nom || p.fournisseur || "";
+
+    return (
+      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      supplierName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  // 🔹 Actions PDF
+  const handlePrint = async (purchaseId: string) => {
+    await generateBRPDF(purchaseId, supabase, "print");
+  };
+
+  const handleView = async (purchaseId: string) => {
+    await generateBRPDF(purchaseId, supabase, "view");
+  };
+
+  return (
+    <div className="space-y-6">
+
+      {/* HEADER */}
+      <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-lg border shadow-sm">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <FileText className="text-blue-600" />
+            Historique des Réceptions
+          </h1>
+          <p className="text-sm text-gray-500">
+            Consultez les bons de réception (BR).
+          </p>
+        </div>
+
+        <Link
+          href="/purchases"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md"
+        >
+          <Plus size={20} />
+          Nouvelle Réception
+        </Link>
+      </div>
+
+      {/* FILTRES */}
+      <div className="grid md:grid-cols-2 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border">
+
+        {/* PÉRIODE */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-gray-500">
+            Période
+          </label>
+
+          <div className="flex items-center gap-2">
+
+            <button
+              onClick={() => adjustDate(-1)}
+              className="p-2 bg-white border rounded"
+            >
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="p-2 border rounded"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="p-2 border rounded"
+              />
+            </div>
+
+            <button
+              onClick={() => adjustDate(1)}
+              className="p-2 bg-white border rounded"
+            >
+              <ChevronRight size={20} />
+            </button>
+
+          </div>
+        </div>
+
+        {/* RECHERCHE */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-gray-500">
+            Recherche
+          </label>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-3" size={16} />
+            <input
+              type="text"
+              placeholder="N° BR, Fournisseur..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 p-2 border rounded"
+            />
+          </div>
+        </div>
+
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-white dark:bg-slate-800 border rounded-lg overflow-hidden">
+        <table className="w-full text-left">
+
+          <thead className="bg-gray-100 dark:bg-slate-900 border-b">
+            <tr>
+              <th className="p-3 text-xs uppercase">Référence</th>
+              <th className="p-3 text-xs uppercase">Date</th>
+              <th className="p-3 text-xs uppercase">Fournisseur</th>
+              <th className="p-3 text-xs uppercase text-right">
+                Montant
+              </th>
+              <th className="p-3 text-xs uppercase text-right">
+                Actions
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="p-6 text-center">
+                  Chargement...
+                </td>
+              </tr>
+            ) : filteredPurchases.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="p-6 text-center italic">
+                  Aucune réception.
+                </td>
+              </tr>
+            ) : (
+              filteredPurchases.map((purchase) => {
+
+                const supplierName =
+                  purchase.suppliers?.nom ||
+                  purchase.fournisseur ||
+                  "N/A";
+
+                return (
+                  <tr key={purchase.id} className="border-t">
+
+                    <td className="p-3 font-mono text-blue-600">
+                      {purchase.reference}
+                    </td>
+
+                    <td className="p-3 text-sm">
+                      {new Date(
+                        purchase.date_achat
+                      ).toLocaleDateString("fr-FR")}
+                    </td>
+
+                    <td className="p-3 font-medium">
+                      {supplierName}
+                    </td>
+
+                    <td className="p-3 text-right font-bold">
+                      {purchase.total_achat.toLocaleString(
+                        "fr-FR",
+                        {
+                          minimumFractionDigits: 2,
+                        }
+                      )}{" "}
+                      DA
+                    </td>
+
+                    <td className="p-3 text-right space-x-2">
+
+                      <button
+                        onClick={() =>
+                          handleView(purchase.id)
+                        }
+                      >
+                        <Eye size={18} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          handlePrint(purchase.id)
+                        }
+                      >
+                        <Printer size={18} />
+                      </button>
+
+                    </td>
+
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+
+        </table>
+      </div>
+    </div>
+  );
+}

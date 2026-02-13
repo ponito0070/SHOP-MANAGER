@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createBrowserClient } from '@supabase/ssr';
-import { Search, Trash2, Plus, Save, Package, Check, X } from "lucide-react";
+import { Search, Plus, Save, Package, Check, X, PackagePlus } from "lucide-react";
 import CreateClientModal from '@/components/CreateClientModal';
+import CreateProductModal from '@/components/CreateProductModal';
 
 interface Product {
   id: string;
@@ -42,6 +43,7 @@ export default function NewSalePage() {
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
 
   // SEARCH LOGIC
   const [prodSearch, setProdSearch] = useState("");
@@ -63,6 +65,7 @@ export default function NewSalePage() {
   // FILTRAGE (NOM + CODE BARRE)
   const filteredProds = products.filter(p => {
     const search = prodSearch.toLowerCase();
+    if (!search) return false; // NE RIEN AFFICHER SI VIDE
     return (
       (p.nom && p.nom.toLowerCase().includes(search)) || 
       (p.code_barre && p.code_barre.toLowerCase().includes(search))
@@ -86,8 +89,16 @@ export default function NewSalePage() {
     prodInputRef.current?.focus();
   };
 
+  // CALLBACK CREATION PRODUIT
+  const handleProductCreated = (newProduct: Product) => {
+    setProducts(prev => [newProduct, ...prev]); 
+    addLine(newProduct); 
+  };
+
   // GESTION CLAVIER
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showProdResults) return;
+    
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlightedIndex(prev => (prev < filteredProds.length - 1 ? prev + 1 : prev));
@@ -121,24 +132,21 @@ export default function NewSalePage() {
     if (lines.length === 0) return alert("Le bon est vide !");
     setIsSubmitting(true);
 
-    // CORRECTION TYPE STRICT POUR EVITER ERREUR SQL
     const payload = lines.map(l => ({
       product_id: l.product_id, 
       quantite: Number(l.qty), 
       prix_unitaire: Number(l.price), 
       remise: Number(l.discount), 
-      total: Number(((l.price * (1 - l.discount/100)) * l.qty).toFixed(2)) // Force 2 décimales
+      total: Number(((l.price * (1 - l.discount/100)) * l.qty).toFixed(2))
     }));
 
     const { data: userData } = await supabase.auth.getUser();
-    
-    // GESTION NULL POUR CLIENT
     const clientIdToSend = selectedClient && selectedClient !== "" ? selectedClient : null;
 
     const { error } = await supabase.rpc('create_sale_transaction', {
       p_client_id: clientIdToSend, 
       p_user_id: userData.user?.id || null, 
-      p_total: Number(totalNet.toFixed(2)), // Force 2 décimales
+      p_total: Number(totalNet.toFixed(2)),
       p_items: payload
     });
 
@@ -186,45 +194,86 @@ export default function NewSalePage() {
         </div>
       </div>
 
-      {/* RECHERCHE AVANCEE */}
+      {/* RECHERCHE COMPACTE */}
       <div className="relative z-20">
-        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg shadow border-2 border-blue-500">
-          <Search className="text-blue-500 ml-2" />
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-3 rounded-lg shadow border-2 border-blue-500">
+          <Search className="text-blue-500" size={20} />
           <input 
             ref={prodInputRef}
             type="text" 
             placeholder="Scanner code-barre ou taper nom..." 
-            className="w-full p-2 bg-transparent text-lg font-medium outline-none text-gray-900 dark:text-white"
+            className="flex-1 p-2 bg-transparent text-base font-medium outline-none text-gray-900 dark:text-white placeholder-gray-400"
             value={prodSearch}
-            onChange={(e) => { setProdSearch(e.target.value); setShowProdResults(true); setHighlightedIndex(0); }}
+            onChange={(e) => { 
+              setProdSearch(e.target.value); 
+              setShowProdResults(e.target.value.length > 0);
+              setHighlightedIndex(0); 
+            }}
             onKeyDown={handleKeyDown}
-            onFocus={() => setShowProdResults(true)}
+            onFocus={() => { if (prodSearch) setShowProdResults(true); }}
+            onBlur={() => setTimeout(() => setShowProdResults(false), 200)}
             autoFocus
           />
+          <button 
+            onClick={() => setIsProductModalOpen(true)}
+            className="p-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded text-gray-600 dark:text-gray-300 transition"
+            title="Créer un nouvel article"
+          >
+            <PackagePlus size={20} />
+          </button>
         </div>
 
-        {/* LISTE DÉFILANTE */}
-        {showProdResults && (
-          <div ref={resultsRef} className="absolute top-full left-0 w-full bg-white dark:bg-slate-800 shadow-xl rounded-lg mt-1 border border-gray-200 dark:border-slate-600 overflow-y-auto max-h-80 z-30">
+        {/* LISTE DÉROULANTE COMPACTE */}
+        {showProdResults && prodSearch && (
+          <div ref={resultsRef} className="absolute top-full left-0 w-full bg-white dark:bg-slate-800 shadow-2xl rounded-lg mt-2 border border-gray-200 dark:border-slate-600 overflow-hidden z-30 max-h-[400px] overflow-y-auto">
             {filteredProds.length > 0 ? (
-              filteredProds.map((p, idx) => (
-                <div 
-                  key={p.id}
-                  onMouseDown={(e) => { e.preventDefault(); addLine(p); }} // Utilise onMouseDown pour valider avant la perte de focus
-                  className={`p-3 border-b border-gray-100 dark:border-slate-700 cursor-pointer flex justify-between items-center transition-colors
-                    ${idx === highlightedIndex ? "bg-blue-100 dark:bg-blue-900/50 border-l-4 border-l-blue-500" : "hover:bg-gray-50 dark:hover:bg-slate-700"}
-                  `}
-                >
-                  <div>
-                    <div className="font-bold text-gray-800 dark:text-white">{p.nom}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">Ref: {p.code_barre || 'N/A'} • Stock: {p.stock_actuel}</div>
-                  </div>
-                  <div className="font-bold text-blue-600">{p.prix_vente} DA</div>
-                </div>
-              ))
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900 sticky top-0">
+                  <tr className="border-b border-gray-200 dark:border-slate-700">
+                    <th className="text-left p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Article</th>
+                    <th className="text-left p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Réf</th>
+                    <th className="text-center p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Stock</th>
+                    <th className="text-right p-2 font-semibold text-gray-600 dark:text-gray-400 text-xs uppercase">Prix</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProds.map((p, idx) => (
+                    <tr 
+                      key={p.id}
+                      onMouseDown={(e) => { e.preventDefault(); addLine(p); }}
+                      className={`cursor-pointer border-b border-gray-100 dark:border-slate-700 transition-colors
+                        ${idx === highlightedIndex 
+                          ? "bg-blue-50 dark:bg-blue-900/30 border-l-4 border-l-blue-500" 
+                          : "hover:bg-gray-50 dark:hover:bg-slate-700/50"}
+                      `}
+                    >
+                      <td className="p-2 font-medium text-gray-900 dark:text-white">{p.nom}</td>
+                      <td className="p-2 text-gray-500 dark:text-gray-400 font-mono text-xs">{p.code_barre || '-'}</td>
+                      <td className="p-2 text-center">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          p.stock_actuel > 10 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                            : p.stock_actuel > 0
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {p.stock_actuel}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right font-bold text-blue-600 dark:text-blue-400">{p.prix_vente.toLocaleString()} DA</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400 italic">
-                  {prodSearch ? `Aucun article trouvé pour "${prodSearch}"` : "Tapez pour rechercher..."}
+              <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                <p className="mb-2">Aucun article trouvé pour "{prodSearch}"</p>
+                <button 
+                  onClick={() => setIsProductModalOpen(true)}
+                  className="text-blue-600 hover:underline font-bold"
+                >
+                  + Créer un nouvel article
+                </button>
               </div>
             )}
           </div>
@@ -251,7 +300,7 @@ export default function NewSalePage() {
               <tr key={i} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                 <td className="p-3 font-medium">{line.nom}</td>
                 <td className="p-2 text-center"><input type="number" min="1" className="w-16 p-1 text-center border rounded bg-transparent" value={line.qty} onChange={(e) => updateLine(i, 'qty', parseInt(e.target.value)||1)} /></td>
-                <td className="p-3 text-right">{line.price}</td>
+                <td className="p-3 text-right">{line.price.toLocaleString()}</td>
                 <td className="p-2 text-center"><input type="number" min="0" max="100" className="w-14 p-1 text-center border rounded bg-transparent" value={line.discount} onChange={(e) => updateLine(i, 'discount', parseInt(e.target.value)||0)} /></td>
                 <td className="p-3 text-right font-bold">{((line.price * (1 - line.discount/100)) * line.qty).toLocaleString()}</td>
                 <td className="p-2 text-center"><button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500"><X size={18} /></button></td>
@@ -275,6 +324,7 @@ export default function NewSalePage() {
       </div>
 
       <CreateClientModal isOpen={isClientModalOpen} onClose={() => setIsClientModalOpen(false)} onSuccess={(c) => { setClients(prev => [c, ...prev]); setSelectedClient(c.id); }} />
+      <CreateProductModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSuccess={handleProductCreated} />
     </div>
   );
 }

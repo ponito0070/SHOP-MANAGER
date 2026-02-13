@@ -12,7 +12,7 @@ type CreateSupplierModalProps = {
 
 export default function CreateSupplierModal({ isOpen, onClose, onSuccess }: CreateSupplierModalProps) {
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({ nom: '', telephone: '' })
+  const [formData, setFormData] = useState({ nom: '', telephone: '', email: '', adresse: '' })
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,8 +26,13 @@ export default function CreateSupplierModal({ isOpen, onClose, onSuccess }: Crea
     setLoading(true)
 
     const { data, error } = await supabase
-      .from('suppliers') // Table FOURNISSEURS
-      .insert([{ nom: formData.nom, telephone: formData.telephone }])
+      .from('suppliers')
+      .insert([{ 
+        nom: formData.nom, 
+        telephone: formData.telephone,
+        email: formData.email,
+        adresse: formData.adresse
+      }])
       .select()
       .single()
 
@@ -35,7 +40,7 @@ export default function CreateSupplierModal({ isOpen, onClose, onSuccess }: Crea
       alert('Erreur création fournisseur: ' + error.message)
     } else {
       onSuccess(data)
-      setFormData({ nom: '', telephone: '' })
+      setFormData({ nom: '', telephone: '', email: '', adresse: '' })
       onClose()
     }
     setLoading(false)
@@ -77,6 +82,28 @@ export default function CreateSupplierModal({ isOpen, onClose, onSuccess }: Crea
               onChange={e => setFormData({ ...formData, telephone: e.target.value })}
               className="w-full px-4 py-2 rounded-lg border bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="05 XX XX XX XX"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="contact@fournisseur.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Adresse</label>
+            <input
+              type="text"
+              value={formData.adresse}
+              onChange={e => setFormData({ ...formData, adresse: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Adresse complète"
             />
           </div>
 

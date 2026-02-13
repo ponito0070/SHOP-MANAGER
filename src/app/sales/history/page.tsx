@@ -5,27 +5,28 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   Search,
   Calendar,
-  Filter,
   Plus,
   FileText,
   Eye,
+  ChevronLeft,
+  ChevronRight,
   Printer,
 } from "lucide-react";
 import Link from "next/link";
-import { generateBLPDF } from "@/lib/pdfGenerator";
+import { generateBRPDF } from "@/lib/pdfGenerator";
 
-interface Sale {
+interface Purchase {
   id: string;
   reference: string;
-  total_vente: number;
-  date_vente: string;
-  statut: string;
-  clients: { nom: string } | null;
-  profiles: { full_name: string } | null;
+  total_achat: number;
+  date_achat: string;
+  fournisseur: string | null; // Ancienne colonne texte (garde pour compatibilité)
+  supplier_id: string | null; // Nouvelle colonne UUID
+  suppliers?: { nom: string } | null;
 }
 
-export default function SalesHistoryPage() {
-  const [sales, setSales] = useState<Sale[]>([]);
+export default function PurchasesHistoryPage() {
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [startDate, setStartDate] = useState(
@@ -35,55 +36,89 @@ export default function SalesHistoryPage() {
     new Date().toISOString().split("T")[0]
   );
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    fetchSales();
-  }, [startDate, endDate, statusFilter]);
+    fetchPurchases();
+  }, [startDate, endDate]);
 
-  const fetchSales = async () => {
+  const fetchPurchases = async () => {
     setLoading(true);
 
-    let query = supabase
-      .from("sales")
-      .select(
-        `
-        *,
-        clients (nom),
-        profiles (full_name)
-      `
-      )
-      .gte("date_vente", `${startDate}T00:00:00`)
-      .lte("date_vente", `${endDate}T23:59:59`)
-      .order("date_vente", { ascending: false });
+    // Récupérer d'abord les achats
+    const { data: purchasesData, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("*")
+      .gte("date_achat", `${startDate}T00:00:00`)
+      .lte("date_achat", `${endDate}T23:59:59`)
+      .order("date_achat", { ascending: false });
 
-    if (statusFilter !== "all") {
-      query = query.eq("statut", statusFilter);
+    if (purchasesError) {
+      console.error("Erreur:", purchasesError.message);
+      setLoading(false);
+      return;
     }
 
-    const { data, error } = await query;
+    // Récupérer tous les fournisseurs
+    const { data: suppliersData } = await supabase
+      .from("suppliers")
+      .select("id, nom");
 
-    if (error) {
-      console.error("Erreur Supabase Critique:", error.message, error.details);
-    } else {
-      setSales(data as any);
-    }
+    // Créer un map pour recherche rapide
+    const suppliersMap = new Map(
+      suppliersData?.map(s => [s.id, s.nom]) || []
+    );
 
+    // Enrichir les achats avec les noms des fournisseurs
+    const enrichedPurchases = purchasesData?.map(p => {
+      // Essayer d'abord supplier_id (nouvelle colonne UUID)
+      if (p.supplier_id && suppliersMap.has(p.supplier_id)) {
+        return {
+          ...p,
+          suppliers: { nom: suppliersMap.get(p.supplier_id)! }
+        };
+      }
+      // Sinon chercher par nom dans l'ancienne colonne fournisseur (texte)
+      if (p.fournisseur) {
+        const supplierByName = suppliersData?.find(
+          s => s.nom.toLowerCase() === p.fournisseur.toLowerCase()
+        );
+        return {
+          ...p,
+          suppliers: supplierByName ? { nom: supplierByName.nom } : null
+        };
+      }
+      return { ...p, suppliers: null };
+    }) || [];
+
+    setPurchases(enrichedPurchases as Purchase[]);
     setLoading(false);
   };
 
-  const filteredSales = sales.filter(
-    (s) =>
-      s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.clients?.nom.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const adjustDate = (days: number) => {
+    const newStart = new Date(startDate);
+    newStart.setDate(newStart.getDate() + days);
+    const newEnd = new Date(endDate);
+    newEnd.setDate(newEnd.getDate() + days);
 
-  const handlePrint = async (saleId: string) => {
-    await generateBLPDF(saleId, supabase, "print");
+    setStartDate(newStart.toISOString().split("T")[0]);
+    setEndDate(newEnd.toISOString().split("T")[0]);
   };
 
-  const handleView = async (saleId: string) => {
-    await generateBLPDF(saleId, supabase, "view");
+  const filteredPurchases = purchases.filter(
+    (p) =>
+      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.suppliers?.nom &&
+        p.suppliers.nom.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.fournisseur &&
+        p.fournisseur.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const handlePrint = async (purchaseId: string) => {
+    await generateBRPDF(purchaseId, supabase, "print");
+  };
+
+  const handleView = async (purchaseId: string) => {
+    await generateBRPDF(purchaseId, supabase, "view");
   };
 
   return (
@@ -92,60 +127,83 @@ export default function SalesHistoryPage() {
       <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-lg border border-gray-300 dark:border-slate-600 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <FileText className="text-blue-600" /> Historique des Ventes
+            <FileText className="text-blue-600" /> Historique des Réceptions
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Consultez et gérez les bons de livraison.
+            Consultez les bons de réception (BR).
           </p>
         </div>
         <Link
-          href="/sales"
+          href="/purchases"
           className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"
         >
-          <Plus size={20} /> Nouvelle Vente
+          <Plus size={20} /> Nouvelle Réception
         </Link>
       </div>
 
       {/* FILTRES */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
-        {/* Date début */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
+        {/* Période avec flèches */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase text-gray-500">Du</label>
-          <div className="relative">
-            <Calendar
-              size={16}
-              className="absolute left-3 top-3 text-gray-500"
-            />
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
+          <label className="text-xs font-bold uppercase text-gray-500">
+            Période
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => adjustDate(-1)}
+              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+              title="Jour précédent"
+            >
+              <ChevronLeft
+                size={20}
+                className="text-gray-600 dark:text-gray-300"
+              />
+            </button>
 
-        {/* Date fin */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase text-gray-500">Au</label>
-          <div className="relative">
-            <Calendar
-              size={16}
-              className="absolute left-3 top-3 text-gray-500"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500"
-            />
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              <div className="relative">
+                <Calendar
+                  size={14}
+                  className="absolute left-2 top-2.5 text-gray-500"
+                />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full pl-8 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded text-sm font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="relative">
+                <Calendar
+                  size={14}
+                  className="absolute left-2 top-2.5 text-gray-500"
+                />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full pl-8 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded text-sm font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => adjustDate(1)}
+              className="p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+              title="Jour suivant"
+            >
+              <ChevronRight
+                size={20}
+                className="text-gray-600 dark:text-gray-300"
+              />
+            </button>
           </div>
         </div>
 
         {/* Recherche */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-gray-500">
-            Recherche Rapide
+            Recherche
           </label>
           <div className="relative">
             <Search
@@ -154,34 +212,11 @@ export default function SalesHistoryPage() {
             />
             <input
               type="text"
-              placeholder="N° Bon, Client..."
+              placeholder="N° BR, Fournisseur..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500 placeholder-gray-400"
             />
-          </div>
-        </div>
-
-        {/* Statut */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold uppercase text-gray-500">
-            Statut
-          </label>
-          <div className="relative">
-            <Filter
-              size={16}
-              className="absolute left-3 top-3 text-gray-500"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500 appearance-none"
-            >
-              <option value="all">Tout voir</option>
-              <option value="valide">Validés</option>
-              <option value="brouillon">Brouillons</option>
-              <option value="annule">Annulés</option>
-            </select>
           </div>
         </div>
       </div>
@@ -198,13 +233,10 @@ export default function SalesHistoryPage() {
                 Date
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider">
-                Client
+                Fournisseur
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Montant Total
-              </th>
-              <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-center">
-                Statut
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Actions
@@ -215,35 +247,35 @@ export default function SalesHistoryPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={5}
                   className="p-8 text-center text-gray-500"
                 >
-                  Chargement des données...
+                  Chargement...
                 </td>
               </tr>
-            ) : filteredSales.length === 0 ? (
+            ) : filteredPurchases.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={5}
                   className="p-8 text-center text-gray-400 italic"
                 >
-                  Aucune vente trouvée sur cette période.
+                  Aucune réception sur cette période.
                 </td>
               </tr>
             ) : (
-              filteredSales.map((sale) => (
+              filteredPurchases.map((purchase) => (
                 <tr
-                  key={sale.id}
+                  key={purchase.id}
                   className="hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group"
                 >
                   <td className="p-3 font-mono text-sm font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
-                    {sale.reference}
+                    {purchase.reference}
                   </td>
                   <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
-                    {new Date(sale.date_vente).toLocaleDateString("fr-FR")}{" "}
+                    {new Date(purchase.date_achat).toLocaleDateString("fr-FR")}{" "}
                     <span className="text-xs text-gray-400">
                       {new Date(
-                        sale.date_vente
+                        purchase.date_achat
                       ).toLocaleTimeString("fr-FR", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -251,10 +283,10 @@ export default function SalesHistoryPage() {
                     </span>
                   </td>
                   <td className="p-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {sale.clients?.nom || "Client Comptoir"}
+                    {purchase.suppliers?.nom || purchase.fournisseur || "N/A"}
                   </td>
                   <td className="p-3 text-sm font-bold text-right text-gray-900 dark:text-white tabular-nums">
-                    {sale.total_vente.toLocaleString("fr-FR", {
+                    {purchase.total_achat.toLocaleString("fr-FR", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}{" "}
@@ -262,32 +294,18 @@ export default function SalesHistoryPage() {
                       DA
                     </span>
                   </td>
-                  <td className="p-3 text-center">
-                    <span
-                      className={`px-2 py-1 rounded text-[10px] font-bold uppercase border
-                      ${
-                        sale.statut === "valide"
-                          ? "bg-green-100 text-green-700 border-green-200"
-                          : sale.statut === "annule"
-                          ? "bg-red-100 text-red-700 border-red-200"
-                          : "bg-gray-100 text-gray-700 border-gray-200"
-                      }`}
-                    >
-                      {sale.statut}
-                    </span>
-                  </td>
                   <td className="p-3 text-right space-x-1">
                     <button
-                      onClick={() => handleView(sale.id)}
+                      onClick={() => handleView(purchase.id)}
                       className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                      title="Voir le BL (PDF)"
+                      title="Voir le BR (PDF)"
                     >
                       <Eye size={18} />
                     </button>
                     <button
-                      onClick={() => handlePrint(sale.id)}
+                      onClick={() => handlePrint(purchase.id)}
                       className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-100 rounded transition-colors"
-                      title="Imprimer le BL"
+                      title="Imprimer le BR"
                     >
                       <Printer size={18} />
                     </button>
