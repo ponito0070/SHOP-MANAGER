@@ -5,28 +5,29 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   Search,
   Calendar,
+  Filter,
   Plus,
   FileText,
   Eye,
+  Printer,
   ChevronLeft,
   ChevronRight,
-  Printer,
 } from "lucide-react";
 import Link from "next/link";
-import { generateBRPDF } from "@/lib/pdfGenerator";
+import { generateBLPDF } from "@/lib/pdfGenerator";
 
-interface Purchase {
+interface Sale {
   id: string;
   reference: string;
-  total_achat: number;
-  date_achat: string;
-  fournisseur: string | null; // Ancienne colonne texte (garde pour compatibilité)
-  supplier_id: string | null; // Nouvelle colonne UUID
-  suppliers?: { nom: string } | null;
+  total_vente: number;
+  date_vente: string;
+  statut: string;
+  clients: { nom: string } | null;
+  profiles: { full_name: string } | null;
 }
 
-export default function PurchasesHistoryPage() {
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
+export default function SalesHistoryPage() {
+  const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [startDate, setStartDate] = useState(
@@ -36,61 +37,40 @@ export default function PurchasesHistoryPage() {
     new Date().toISOString().split("T")[0]
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    fetchPurchases();
-  }, [startDate, endDate]);
+    fetchSales();
+  }, [startDate, endDate, statusFilter]);
 
-  const fetchPurchases = async () => {
+  const fetchSales = async () => {
     setLoading(true);
 
-    // Récupérer d'abord les achats
-    const { data: purchasesData, error: purchasesError } = await supabase
-      .from("purchases")
-      .select("*")
-      .gte("date_achat", `${startDate}T00:00:00`)
-      .lte("date_achat", `${endDate}T23:59:59`)
-      .order("date_achat", { ascending: false });
+    let query = supabase
+      .from("sales")
+      .select(
+        `
+        *,
+        clients (nom),
+        profiles (full_name)
+      `
+      )
+      .gte("date_vente", `${startDate}T00:00:00`)
+      .lte("date_vente", `${endDate}T23:59:59`)
+      .order("date_vente", { ascending: false });
 
-    if (purchasesError) {
-      console.error("Erreur:", purchasesError.message);
-      setLoading(false);
-      return;
+    if (statusFilter !== "all") {
+      query = query.eq("statut", statusFilter);
     }
 
-    // Récupérer tous les fournisseurs
-    const { data: suppliersData } = await supabase
-      .from("suppliers")
-      .select("id, nom");
+    const { data, error } = await query;
 
-    // Créer un map pour recherche rapide
-    const suppliersMap = new Map(
-      suppliersData?.map(s => [s.id, s.nom]) || []
-    );
+    if (error) {
+      console.error("Erreur Supabase Critique:", error.message, error.details);
+    } else {
+      setSales(data as any);
+    }
 
-    // Enrichir les achats avec les noms des fournisseurs
-    const enrichedPurchases = purchasesData?.map(p => {
-      // Essayer d'abord supplier_id (nouvelle colonne UUID)
-      if (p.supplier_id && suppliersMap.has(p.supplier_id)) {
-        return {
-          ...p,
-          suppliers: { nom: suppliersMap.get(p.supplier_id)! }
-        };
-      }
-      // Sinon chercher par nom dans l'ancienne colonne fournisseur (texte)
-      if (p.fournisseur) {
-        const supplierByName = suppliersData?.find(
-          s => s.nom.toLowerCase() === p.fournisseur.toLowerCase()
-        );
-        return {
-          ...p,
-          suppliers: supplierByName ? { nom: supplierByName.nom } : null
-        };
-      }
-      return { ...p, suppliers: null };
-    }) || [];
-
-    setPurchases(enrichedPurchases as Purchase[]);
     setLoading(false);
   };
 
@@ -104,21 +84,18 @@ export default function PurchasesHistoryPage() {
     setEndDate(newEnd.toISOString().split("T")[0]);
   };
 
-  const filteredPurchases = purchases.filter(
-    (p) =>
-      p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.suppliers?.nom &&
-        p.suppliers.nom.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.fournisseur &&
-        p.fournisseur.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredSales = sales.filter(
+    (s) =>
+      s.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.clients?.nom.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handlePrint = async (purchaseId: string) => {
-    await generateBRPDF(purchaseId, supabase, "print");
+  const handlePrint = async (saleId: string) => {
+    await generateBLPDF(saleId, supabase, "print");
   };
 
-  const handleView = async (purchaseId: string) => {
-    await generateBRPDF(purchaseId, supabase, "view");
+  const handleView = async (saleId: string) => {
+    await generateBLPDF(saleId, supabase, "view");
   };
 
   return (
@@ -127,22 +104,22 @@ export default function PurchasesHistoryPage() {
       <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-lg border border-gray-300 dark:border-slate-600 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <FileText className="text-blue-600" /> Historique des Réceptions
+            <FileText className="text-blue-600" /> Historique des Ventes
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Consultez les bons de réception (BR).
+            Consultez et gérez les bons de livraison.
           </p>
         </div>
         <Link
-          href="/purchases"
+          href="/sales"
           className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"
         >
-          <Plus size={20} /> Nouvelle Réception
+          <Plus size={20} /> Nouvelle Vente
         </Link>
       </div>
 
       {/* FILTRES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
+      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_0.8fr] gap-4 bg-gray-100 dark:bg-slate-900 p-4 rounded-lg border border-gray-300 dark:border-slate-600">
         {/* Période avec flèches */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-gray-500">
@@ -203,7 +180,7 @@ export default function PurchasesHistoryPage() {
         {/* Recherche */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-bold uppercase text-gray-500">
-            Recherche
+            Recherche Rapide
           </label>
           <div className="relative">
             <Search
@@ -212,11 +189,34 @@ export default function PurchasesHistoryPage() {
             />
             <input
               type="text"
-              placeholder="N° BR, Fournisseur..."
+              placeholder="N° Bon, Client..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500 placeholder-gray-400"
             />
+          </div>
+        </div>
+
+        {/* Statut */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold uppercase text-gray-500">
+            Statut
+          </label>
+          <div className="relative">
+            <Filter
+              size={16}
+              className="absolute left-3 top-3 text-gray-500"
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full pl-10 p-2 bg-white dark:bg-slate-800 border-2 border-gray-300 dark:border-slate-500 rounded font-medium text-gray-900 dark:text-white outline-none focus:border-blue-500 appearance-none"
+            >
+              <option value="all">Tout voir</option>
+              <option value="valide">Validés</option>
+              <option value="brouillon">Brouillons</option>
+              <option value="annule">Annulés</option>
+            </select>
           </div>
         </div>
       </div>
@@ -233,10 +233,13 @@ export default function PurchasesHistoryPage() {
                 Date
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider">
-                Fournisseur
+                Client
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Montant Total
+              </th>
+              <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-center">
+                Statut
               </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Actions
@@ -247,35 +250,35 @@ export default function PurchasesHistoryPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="p-8 text-center text-gray-500"
                 >
-                  Chargement...
+                  Chargement des données...
                 </td>
               </tr>
-            ) : filteredPurchases.length === 0 ? (
+            ) : filteredSales.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="p-8 text-center text-gray-400 italic"
                 >
-                  Aucune réception sur cette période.
+                  Aucune vente trouvée sur cette période.
                 </td>
               </tr>
             ) : (
-              filteredPurchases.map((purchase) => (
+              filteredSales.map((sale) => (
                 <tr
-                  key={purchase.id}
+                  key={sale.id}
                   className="hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group"
                 >
                   <td className="p-3 font-mono text-sm font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
-                    {purchase.reference}
+                    {sale.reference}
                   </td>
                   <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
-                    {new Date(purchase.date_achat).toLocaleDateString("fr-FR")}{" "}
+                    {new Date(sale.date_vente).toLocaleDateString("fr-FR")}{" "}
                     <span className="text-xs text-gray-400">
                       {new Date(
-                        purchase.date_achat
+                        sale.date_vente
                       ).toLocaleTimeString("fr-FR", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -283,10 +286,10 @@ export default function PurchasesHistoryPage() {
                     </span>
                   </td>
                   <td className="p-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {purchase.suppliers?.nom || purchase.fournisseur || "N/A"}
+                    {sale.clients?.nom || "Client Comptoir"}
                   </td>
                   <td className="p-3 text-sm font-bold text-right text-gray-900 dark:text-white tabular-nums">
-                    {purchase.total_achat.toLocaleString("fr-FR", {
+                    {sale.total_vente.toLocaleString("fr-FR", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}{" "}
@@ -294,18 +297,32 @@ export default function PurchasesHistoryPage() {
                       DA
                     </span>
                   </td>
+                  <td className="p-3 text-center">
+                    <span
+                      className={`px-2 py-1 rounded text-[10px] font-bold uppercase border
+                      ${
+                        sale.statut === "valide"
+                          ? "bg-green-100 text-green-700 border-green-200"
+                          : sale.statut === "annule"
+                          ? "bg-red-100 text-red-700 border-red-200"
+                          : "bg-gray-100 text-gray-700 border-gray-200"
+                      }`}
+                    >
+                      {sale.statut}
+                    </span>
+                  </td>
                   <td className="p-3 text-right space-x-1">
                     <button
-                      onClick={() => handleView(purchase.id)}
+                      onClick={() => handleView(sale.id)}
                       className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                      title="Voir le BR (PDF)"
+                      title="Voir le BL (PDF)"
                     >
                       <Eye size={18} />
                     </button>
                     <button
-                      onClick={() => handlePrint(purchase.id)}
+                      onClick={() => handlePrint(sale.id)}
                       className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-100 rounded transition-colors"
-                      title="Imprimer le BR"
+                      title="Imprimer le BL"
                     >
                       <Printer size={18} />
                     </button>
