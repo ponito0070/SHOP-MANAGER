@@ -163,7 +163,12 @@ export default function FinancePage() {
                 {sales.map(sale => (
                   <tr key={sale.id} className="border-b last:border-0 border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
                     <td className="p-2 text-gray-500 dark:text-gray-400">{new Date(sale.created_at).toLocaleDateString('fr-FR')} {new Date(sale.created_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</td>
+<<<<<<< HEAD
   					<td className="p-2 text-gray-800 dark:text-gray-200">-</td>
+=======
+       
+					<td className="p-2 text-gray-800 dark:text-gray-200">-</td>
+>>>>>>> 4218a6f4e1198363ee30f0e7f0a68d038e959b09
              
                     <td className="p-2 text-right font-bold text-gray-800 dark:text-white">+{sale.total_vente}</td>
                   </tr>
