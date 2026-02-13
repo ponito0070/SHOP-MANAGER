@@ -68,7 +68,6 @@ export default function RootLayout({
                     <Link href="/sales/history" className={getLinkClass('/sales/history')}>
                       <FileText size={18} /> Historique Ventes
                     </Link>
-                    {/* LIEN CLIENTS ACTIVÉ */}
                     <Link href="/clients" className={getLinkClass('/clients')}>
                       <Users size={18} /> Clients
                     </Link>
@@ -81,6 +80,9 @@ export default function RootLayout({
                   <div className="space-y-1">
                     <Link href="/purchases" className={getLinkClass('/purchases')}>
                       <Truck size={18} /> Réception (BR)
+                    </Link>
+                    <Link href="/purchases/history" className={getLinkClass('/purchases/history')}>
+                      <FileText size={18} /> Historique Achats
                     </Link>
                     <Link href="/inventory" className={getLinkClass('/inventory')}>
                       <Package size={18} /> Inventaire Global
