@@ -32,9 +32,18 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Protection simple
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+  // Pages publiques accessibles sans authentification
+  const publicPaths = ['/login', '/reset-password']
+  const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
+
+  // Protection : rediriger vers /login si pas d'utilisateur ET page non publique
+  if (!user && !isPublicPath) {
     return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  // Si utilisateur connecté et sur /login ou /reset-password, rediriger vers /
+  if (user && isPublicPath) {
+    return NextResponse.redirect(new URL('/', request.url))
   }
 
   return response
