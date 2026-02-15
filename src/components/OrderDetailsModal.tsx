@@ -56,11 +56,15 @@ export default function OrderDetailsModal({ open, onClose, id, type }: { open: b
       if (type === 'purchase') {
         updateBody.quantite = it.quantite
         updateBody.prix_achat_unitaire = it.prix_achat_unitaire
-        updateBody.total_ligne = (it.quantite * (it.prix_achat_unitaire || 0))
+        updateBody.remise_pourcentage = it.remise_pourcentage || 0
+        updateBody.remise_flat = it.remise_flat || 0
+        updateBody.total_ligne = (it.quantite * (it.prix_achat_unitaire || 0)) - ((it.quantite * (it.prix_achat_unitaire || 0) * (it.remise_pourcentage || 0) / 100)) - (it.remise_flat || 0)
       } else {
         updateBody.quantite = it.quantite
         updateBody.prix_unitaire_vente = it.prix_unitaire_vente
-        updateBody.total_ligne = (it.quantite * (it.prix_unitaire_vente || 0))
+        updateBody.remise_pourcentage = it.remise_pourcentage || 0
+        updateBody.remise_flat = it.remise_flat || 0
+        updateBody.total_ligne = (it.quantite * (it.prix_unitaire_vente || 0)) - ((it.quantite * (it.prix_unitaire_vente || 0) * (it.remise_pourcentage || 0) / 100)) - (it.remise_flat || 0)
       }
       const { error } = await supabase.from(table).update(updateBody).eq('id', it.id)
       if (error) console.error('Erreur update item', error)
@@ -100,9 +104,14 @@ export default function OrderDetailsModal({ open, onClose, id, type }: { open: b
         }
       }
     }
-    // Recompute parent total
-    // Recompute parent total and apply remise_flat
-    const sumLines = items.reduce((s, r) => s + (r.total_ligne || 0), 0)
+    // Recompute parent total with remises
+    const sumLines = items.reduce((s, r) => {
+      const qty = r.quantite || 0;
+      const pu = type === 'purchase' ? r.prix_achat_unitaire : r.prix_unitaire_vente || 0;
+      const remisePercent = r.remise_pourcentage || 0;
+      const remiseFlat = r.remise_flat || 0;
+      return s + ((qty * pu) - (qty * pu * remisePercent / 100) - remiseFlat);
+    }, 0);
     const totalAfterRemise = (sumLines || 0) - (remiseFlat || 0)
     if (type === 'purchase') {
       await supabase.from('purchases').update({ total_achat: totalAfterRemise, remise_flat: remiseFlat }).eq('id', id)
@@ -140,22 +149,37 @@ export default function OrderDetailsModal({ open, onClose, id, type }: { open: b
                 <th className="p-2 text-xs font-bold uppercase text-gray-600">Produit</th>
                 <th className="p-2 text-xs font-bold uppercase text-gray-600 text-right">Quantité</th>
                 <th className="p-2 text-xs font-bold uppercase text-gray-600 text-right">PU</th>
+                <th className="p-2 text-xs font-bold uppercase text-gray-600 text-right">Remise %</th>
+                <th className="p-2 text-xs font-bold uppercase text-gray-600 text-right">Remise DA</th>
                 <th className="p-2 text-xs font-bold uppercase text-gray-600 text-right">Total</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((it, i) => (
-                <tr key={it.id} className="border-b">
-                  <td className="p-2 text-gray-900 dark:text-white">{it.products?.nom || it.product_id}</td>
-                  <td className="p-2 text-right">
-                    <input type="number" value={it.quantite} onChange={e=>handleItemChange(i,'quantite', parseInt(e.target.value)||0)} className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
-                  </td>
-                  <td className="p-2 text-right">
-                    <input type="number" value={type==='purchase' ? it.prix_achat_unitaire : it.prix_unitaire_vente} onChange={e=>handleItemChange(i, type==='purchase' ? 'prix_achat_unitaire' : 'prix_unitaire_vente', parseFloat(e.target.value)||0)} className="w-28 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
-                  </td>
-                  <td className="p-2 text-right text-gray-900 dark:text-white">{(it.total_ligne || (it.quantite*(type==='purchase'?it.prix_achat_unitaire:it.prix_unitaire_vente))).toLocaleString()} DA</td>
-                </tr>
-              ))}
+              {items.map((it, i) => {
+                const qty = it.quantite || 0;
+                const pu = type === 'purchase' ? it.prix_achat_unitaire : it.prix_unitaire_vente || 0;
+                const remisePercent = it.remise_pourcentage || 0;
+                const remiseFlat = it.remise_flat || 0;
+                const subtotal = (qty * pu) - (qty * pu * remisePercent / 100) - remiseFlat;
+                return (
+                  <tr key={it.id} className="border-b">
+                    <td className="p-2 text-gray-900 dark:text-white">{it.products?.nom || it.product_id}</td>
+                    <td className="p-2 text-right">
+                      <input type="number" value={qty} onChange={e=>handleItemChange(i,'quantite', parseInt(e.target.value)||0)} className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
+                    </td>
+                    <td className="p-2 text-right">
+                      <input type="number" value={pu} onChange={e=>handleItemChange(i, type==='purchase' ? 'prix_achat_unitaire' : 'prix_unitaire_vente', parseFloat(e.target.value)||0)} className="w-28 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
+                    </td>
+                    <td className="p-2 text-right">
+                      <input type="number" min="0" max="100" value={remisePercent} onChange={e=>handleItemChange(i, 'remise_pourcentage', parseFloat(e.target.value)||0)} className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
+                    </td>
+                    <td className="p-2 text-right">
+                      <input type="number" min="0" value={remiseFlat} onChange={e=>handleItemChange(i, 'remise_flat', parseFloat(e.target.value)||0)} className="w-24 px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right" />
+                    </td>
+                    <td className="p-2 text-right font-bold text-blue-600 dark:text-blue-400">{subtotal.toLocaleString()} DA</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

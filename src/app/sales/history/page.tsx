@@ -121,7 +121,20 @@ export default function SalesHistoryPage() {
     <div className="space-y-6">
       {/* HEADER */}
       <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-lg border border-gray-300 dark:border-slate-600 shadow-sm">
-                    
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <FileText className="text-blue-600" /> Historique des Ventes
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Consultez les bons de vente (BL).
+          </p>
+        </div>
+        <Link
+          href="/sales"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"
+        >
+          <Plus size={20} /> Nouvelle Vente
+        </Link>
       </div>
 
       {/* FILTRES */}

@@ -31,6 +31,7 @@ export async function generateBLPDF(
         quantite,
         prix_unitaire_vente,
         remise_pourcentage,
+        remise_flat,
         total_ligne,
         products (nom, code_barre)
       )
@@ -86,21 +87,24 @@ export async function generateBLPDF(
   // TABLEAU - avec formatage corrigé
   const tableData = saleData.sale_items.map((item: any) => {
     const pu = Number(item.prix_unitaire_vente);
-    const total = Number(item.total_ligne);
-
+    const qty = Number(item.quantite);
+    const remisePercent = Number(item.remise_pourcentage || 0);
+    const remiseFlat = Number(item.remise_flat || 0);
+    const subtotal = (qty * pu) - (qty * pu * remisePercent / 100) - remiseFlat;
+    
     return [
       item.products?.code_barre || "-",
       item.products?.nom || "Article",
-      String(item.quantite),
+      String(qty),
       formatMoney(pu),
-      item.remise_pourcentage ? `${item.remise_pourcentage}%` : "-",
-      formatMoney(total),
+      (remisePercent > 0 || remiseFlat > 0) ? `${remisePercent}% / ${formatMoney(remiseFlat)}` : "-",
+      formatMoney(subtotal),
     ];
   });
 
   autoTable(doc, {
     startY: 62,
-    head: [["Réf", "Désignation", "Qté", "P.U", "Remise", "Total"]],
+    head: [["Réf", "Désignation", "Qté", "P.U", "Remises", "Total"]],
     body: tableData,
     theme: "striped",
     headStyles: {
@@ -118,10 +122,10 @@ export async function generateBLPDF(
     },
     columnStyles: {
       0: { cellWidth: 20, halign: "left" },
-      1: { cellWidth: 70, halign: "left" },
+      1: { cellWidth: 60, halign: "left" },
       2: { cellWidth: 15, halign: "center" },
-      3: { cellWidth: 25, halign: "right" },
-      4: { cellWidth: 20, halign: "center" },
+      3: { cellWidth: 22, halign: "right" },
+      4: { cellWidth: 30, halign: "center" },
       5: { cellWidth: 25, halign: "right", fontStyle: "bold" },
     },
     margin: { left: 20, right: 20 },
@@ -129,13 +133,27 @@ export async function generateBLPDF(
 
   const finalY = (doc as any).lastAutoTable.finalY || 120;
 
+  // Afficher la remise générale si elle existe
+  let displayStartY = finalY + 5;
+  if (saleData.remise_flat && saleData.remise_flat > 0) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      `Remise générale: -${formatMoney(Number(saleData.remise_flat))}`,
+      pageWidth - 20,
+      displayStartY,
+      { align: "right" }
+    );
+    displayStartY += 5;
+  }
+
   // TOTAL
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text(
     `TOTAL: ${formatMoney(Number(saleData.total_vente))}`,
     pageWidth - 20,
-    finalY + 10,
+    displayStartY + 5,
     { align: "right" }
   );
 

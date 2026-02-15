@@ -86,13 +86,26 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
   }
 
   const handlePaymentSave = async (amount: number, note?: string) => {
-    const { error: e1 } = await supabase.from('payments').insert([{ party_type: 'supplier', party_id: id, amount, note }])
-    if (e1) { alert('Erreur enregistrement paiement: '+e1.message); return }
-    const { error: e2 } = await supabase.from('suppliers').update({ solde: formData.solde - amount }).eq('id', id)
-    if (e2) { alert('Erreur mise à jour solde: '+e2.message); return }
-    const { data } = await supabase.from('suppliers').select('*').eq('id', id).single()
-    setFormData(prev=>({ ...prev, solde: data?.solde || 0 }))
-    setPaymentOpen(false)
+    try {
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ party_type: 'supplier', party_id: id, amount, note }),
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        alert('Erreur enregistrement paiement: ' + (data.error || 'Erreur inconnue'))
+        return
+      }
+      
+      // Update local state with new balance
+      setFormData(prev => ({ ...prev, solde: data.newBalance || prev.solde }))
+      setPaymentOpen(false)
+    } catch (error) {
+      alert('Erreur: ' + (error instanceof Error ? error.message : 'Erreur inconnue'))
+    }
   }
 
   const handleDelete = async () => {

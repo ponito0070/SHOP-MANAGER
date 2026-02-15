@@ -107,6 +107,9 @@ export default function RootLayout({
                     <Link href="/finance" className={getLinkClass('/finance')}>
                       <BarChart3 size={18} /> Finances & Stats
                     </Link>
+                    <Link href="/finance/expenses" className={getLinkClass('/finance/expenses')}>
+                      <FileText size={18} /> Gestion Dépenses
+                    </Link>
                   </div>
                 </div>
 
