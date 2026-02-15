@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { generateBLPDF } from "@/lib/pdfGenerator";
+import VoidConfirm from '@/components/VoidConfirm'
+import OrderDetailsModal from '@/components/OrderDetailsModal'
 
 interface Sale {
   id: string;
@@ -24,6 +26,7 @@ interface Sale {
   statut: string;
   clients: { nom: string } | null;
   profiles: { full_name: string } | null;
+  is_void?: boolean;
 }
 
 export default function SalesHistoryPage() {
@@ -74,6 +77,22 @@ export default function SalesHistoryPage() {
     setLoading(false);
   };
 
+  const [voidOpen, setVoidOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [orderOpen, setOrderOpen] = useState(false)
+  const [orderId, setOrderId] = useState<string | null>(null)
+
+  const handleToggleVoid = async (id: string, current: boolean) => {
+    const { error } = await supabase.from('sales').update({ is_void: !current }).eq('id', id)
+    if (error) {
+      console.error('Erreur mise à jour void:', error.message)
+      return
+    }
+    await fetchSales()
+    setVoidOpen(false)
+    setSelectedId(null)
+  }
+
   const adjustDate = (days: number) => {
     const newStart = new Date(startDate);
     newStart.setDate(newStart.getDate() + days);
@@ -102,20 +121,7 @@ export default function SalesHistoryPage() {
     <div className="space-y-6">
       {/* HEADER */}
       <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-lg border border-gray-300 dark:border-slate-600 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <FileText className="text-blue-600" /> Historique des Ventes
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Consultez et gérez les bons de livraison.
-          </p>
-        </div>
-        <Link
-          href="/sales"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"
-        >
-          <Plus size={20} /> Nouvelle Vente
-        </Link>
+                    
       </div>
 
       {/* FILTRES */}
@@ -269,13 +275,18 @@ export default function SalesHistoryPage() {
               filteredSales.map((sale) => (
                 <tr
                   key={sale.id}
-                  className="hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group"
+                  className={`hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group ${sale.is_void ? 'opacity-60 line-through' : ''}`}
                 >
                   <td className="p-3 font-mono text-sm font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
-                    {sale.reference}
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setOrderId(sale.id); setOrderOpen(true) }} className="text-left underline">{sale.reference}</button>
+                      {sale.is_void && (
+                        <span className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">Annulé</span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
-                    {new Date(sale.date_vente).toLocaleDateString("fr-FR")}{" "}
+                    {new Date(sale.date_vente).toLocaleDateString("fr-FR")} {" "}
                     <span className="text-xs text-gray-400">
                       {new Date(
                         sale.date_vente
@@ -286,29 +297,26 @@ export default function SalesHistoryPage() {
                     </span>
                   </td>
                   <td className="p-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {sale.clients?.nom || "Client Comptoir"}
+                    {sale.clients?.nom || "N/A"}
                   </td>
                   <td className="p-3 text-sm font-bold text-right text-gray-900 dark:text-white tabular-nums">
-                    {sale.total_vente.toLocaleString("fr-FR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    <span className="text-xs font-normal text-gray-500">
-                      DA
-                    </span>
+                    {sale.total_vente?.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}{" "}
+                    <span className="text-xs font-normal text-gray-500">DA</span>
                   </td>
                   <td className="p-3 text-center">
                     <span
                       className={`px-2 py-1 rounded text-[10px] font-bold uppercase border
                       ${
-                        sale.statut === "valide"
+                        sale.is_void
+                          ? "bg-gray-100 text-gray-700 border-gray-200"
+                          : sale.statut === "valide"
                           ? "bg-green-100 text-green-700 border-green-200"
                           : sale.statut === "annule"
                           ? "bg-red-100 text-red-700 border-red-200"
                           : "bg-gray-100 text-gray-700 border-gray-200"
                       }`}
                     >
-                      {sale.statut}
+                      {sale.is_void ? 'annulé' : (sale.statut || 'brouillon')}
                     </span>
                   </td>
                   <td className="p-3 text-right space-x-1">
@@ -326,6 +334,13 @@ export default function SalesHistoryPage() {
                     >
                       <Printer size={18} />
                     </button>
+                    <button
+                      onClick={() => { setSelectedId(sale.id); setVoidOpen(true); }}
+                      className="ml-3 text-sm text-red-500 hover:text-red-700 rounded transition-colors"
+                      title={sale.is_void ? "Rétablir la commande" : "Annuler la commande"}
+                    >
+                      {sale.is_void ? 'Rétablir la commande' : 'Annuler la commande'}
+                    </button>
                   </td>
                 </tr>
               ))
@@ -333,6 +348,14 @@ export default function SalesHistoryPage() {
           </tbody>
         </table>
       </div>
+      <VoidConfirm
+        open={voidOpen}
+        message="Marquer ce bon comme annulé n'inversera pas automatiquement les stocks. Confirmer ?"
+        onClose={() => setVoidOpen(false)}
+        confirmLabel="Annuler la commande"
+        onConfirm={() => selectedId && handleToggleVoid(selectedId, sales.find(s => s.id===selectedId)?.is_void || false)}
+      />
+      <OrderDetailsModal open={orderOpen} onClose={() => setOrderOpen(false)} id={orderId} type="sale" />
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { generateBRPDF } from "@/lib/pdfGenerator";
+import VoidConfirm from '@/components/VoidConfirm'
+import OrderDetailsModal from '@/components/OrderDetailsModal'
 
 interface Purchase {
   id: string;
@@ -23,6 +25,7 @@ interface Purchase {
   fournisseur: string | null; // Ancienne colonne texte (garde pour compatibilité)
   supplier_id: string | null; // Nouvelle colonne UUID
   suppliers?: { nom: string } | null;
+  is_void?: boolean;
 }
 
 export default function PurchasesHistoryPage() {
@@ -44,10 +47,10 @@ export default function PurchasesHistoryPage() {
   const fetchPurchases = async () => {
     setLoading(true);
 
-    // Récupérer d'abord les achats
+    // Récupérer d'abord les achats, inclure fournisseur relation si possible
     const { data: purchasesData, error: purchasesError } = await supabase
       .from("purchases")
-      .select("*")
+      .select(`*, suppliers(nom)`)
       .gte("date_achat", `${startDate}T00:00:00`)
       .lte("date_achat", `${endDate}T23:59:59`)
       .order("date_achat", { ascending: false });
@@ -58,41 +61,43 @@ export default function PurchasesHistoryPage() {
       return;
     }
 
-    // Récupérer tous les fournisseurs
-    const { data: suppliersData } = await supabase
-      .from("suppliers")
-      .select("id, nom");
+    // purchasesData already includes suppliers(nom) when supplier_id exists
+    // But some rows stored the supplier id as text in `fournisseur` while supplier_id is null.
+    // Collect those and fetch names in one query.
+    const possibleIds = (purchasesData || [])
+      .filter((p: any) => p.supplier_id == null && typeof p.fournisseur === 'string' && /^[0-9a-fA-F-]{36}$/.test(p.fournisseur))
+      .map((p: any) => p.fournisseur)
+    const supplierByIdMap = new Map()
+    if (possibleIds.length > 0) {
+      const { data: matches } = await supabase.from('suppliers').select('id, nom').in('id', possibleIds)
+      matches?.forEach((s: any) => supplierByIdMap.set(s.id, s.nom))
+    }
 
-    // Créer un map pour recherche rapide
-    const suppliersMap = new Map(
-      suppliersData?.map(s => [s.id, s.nom]) || []
-    );
-
-    // Enrichir les achats avec les noms des fournisseurs
-    const enrichedPurchases = purchasesData?.map(p => {
-      // Essayer d'abord supplier_id (nouvelle colonne UUID)
-      if (p.supplier_id && suppliersMap.has(p.supplier_id)) {
-        return {
-          ...p,
-          suppliers: { nom: suppliersMap.get(p.supplier_id)! }
-        };
+    const enrichedPurchases = purchasesData?.map((p: any) => {
+      const base = { ...p, is_void: p.is_void || false }
+      if (!base.suppliers && base.fournisseur && supplierByIdMap.has(base.fournisseur)) {
+        base.suppliers = { nom: supplierByIdMap.get(base.fournisseur) }
       }
-      // Sinon chercher par nom dans l'ancienne colonne fournisseur (texte)
-      if (p.fournisseur) {
-        const supplierByName = suppliersData?.find(
-          s => s.nom.toLowerCase() === p.fournisseur.toLowerCase()
-        );
-        return {
-          ...p,
-          suppliers: supplierByName ? { nom: supplierByName.nom } : null
-        };
-      }
-      return { ...p, suppliers: null };
+      return base
     }) || [];
 
     setPurchases(enrichedPurchases as Purchase[]);
     setLoading(false);
   };
+
+  const [voidOpen, setVoidOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const handleToggleVoid = async (id: string, current: boolean) => {
+    const { error } = await supabase.from('purchases').update({ is_void: !current }).eq('id', id)
+    if (error) {
+      console.error('Erreur mise à jour void:', error.message)
+      return
+    }
+    await fetchPurchases()
+    setVoidOpen(false)
+    setSelectedId(null)
+  }
 
   const adjustDate = (days: number) => {
     const newStart = new Date(startDate);
@@ -120,6 +125,9 @@ export default function PurchasesHistoryPage() {
   const handleView = async (purchaseId: string) => {
     await generateBRPDF(purchaseId, supabase, "view");
   };
+
+  const [orderOpen, setOrderOpen] = useState(false)
+  const [orderId, setOrderId] = useState<string | null>(null)
 
   return (
     <div className="space-y-6">
@@ -238,6 +246,9 @@ export default function PurchasesHistoryPage() {
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Montant Total
               </th>
+              <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-center">
+                Statut
+              </th>
               <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 tracking-wider text-right">
                 Actions
               </th>
@@ -266,10 +277,15 @@ export default function PurchasesHistoryPage() {
               filteredPurchases.map((purchase) => (
                 <tr
                   key={purchase.id}
-                  className="hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group"
+                  className={`hover:bg-blue-50 dark:hover:bg-slate-700/50 transition-colors group ${purchase.is_void ? 'opacity-60 line-through' : ''}`}
                 >
                   <td className="p-3 font-mono text-sm font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
-                    {purchase.reference}
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setOrderId(purchase.id); setOrderOpen(true) }} className="text-left underline">{purchase.reference}</button>
+                      {purchase.is_void && (
+                        <span className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">Annulé</span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
                     {new Date(purchase.date_achat).toLocaleDateString("fr-FR")}{" "}
@@ -294,6 +310,12 @@ export default function PurchasesHistoryPage() {
                       DA
                     </span>
                   </td>
+                  <td className="p-3 text-center">
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border 
+                      ${purchase.is_void ? "bg-gray-100 text-gray-700 border-gray-200" : "bg-green-100 text-green-700 border-green-200"}`}>
+                      {purchase.is_void ? 'annulé' : 'validé'}
+                    </span>
+                  </td>
                   <td className="p-3 text-right space-x-1">
                     <button
                       onClick={() => handleView(purchase.id)}
@@ -309,6 +331,13 @@ export default function PurchasesHistoryPage() {
                     >
                       <Printer size={18} />
                     </button>
+                    <button
+                      onClick={() => { setSelectedId(purchase.id); setVoidOpen(true); }}
+                      className="ml-3 text-sm text-red-500 hover:text-red-700 rounded transition-colors"
+                      title={purchase.is_void ? "Rétablir la commande" : "Annuler la commande"}
+                    >
+                      {purchase.is_void ? "Rétablir la commande" : "Annuler la commande"}
+                    </button>
                   </td>
                 </tr>
               ))
@@ -316,6 +345,14 @@ export default function PurchasesHistoryPage() {
           </tbody>
         </table>
       </div>
+      <VoidConfirm
+        open={voidOpen}
+        message="Marquer ce bon comme annulé n'inversera pas automatiquement les stocks. Confirmer ?"
+        onClose={() => setVoidOpen(false)}
+        confirmLabel="Annuler la commande"
+        onConfirm={() => selectedId && handleToggleVoid(selectedId, purchases.find(p => p.id===selectedId)?.is_void || false)}
+      />
+      <OrderDetailsModal open={orderOpen} onClose={() => setOrderOpen(false)} id={orderId} type="purchase" />
     </div>
   );
 }

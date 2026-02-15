@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Save, Trash2, Truck } from 'lucide-react'
+import PaymentModal from '@/components/PaymentModal'
 
 export default function DetailSupplierPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -23,6 +24,7 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
     solde: 0,
     notes: ''
   })
+  const [paymentOpen, setPaymentOpen] = useState(false)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,6 +85,16 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
     setSaving(false)
   }
 
+  const handlePaymentSave = async (amount: number, note?: string) => {
+    const { error: e1 } = await supabase.from('payments').insert([{ party_type: 'supplier', party_id: id, amount, note }])
+    if (e1) { alert('Erreur enregistrement paiement: '+e1.message); return }
+    const { error: e2 } = await supabase.from('suppliers').update({ solde: formData.solde - amount }).eq('id', id)
+    if (e2) { alert('Erreur mise à jour solde: '+e2.message); return }
+    const { data } = await supabase.from('suppliers').select('*').eq('id', id).single()
+    setFormData(prev=>({ ...prev, solde: data?.solde || 0 }))
+    setPaymentOpen(false)
+  }
+
   const handleDelete = async () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce fournisseur ? Cette action est irréversible.')) return
 
@@ -123,14 +135,17 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
             <p className="text-gray-500 dark:text-gray-400">ID: {id}</p>
           </div>
         </div>
-        <button 
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-        >
-          <Trash2 className="w-5 h-5" />
-          {deleting ? 'Suppression...' : 'Supprimer'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setPaymentOpen(true)} className="px-4 py-2 bg-green-600 text-white rounded-lg">Payer</button>
+          <button 
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+          >
+            <Trash2 className="w-5 h-5" />
+            {deleting ? 'Suppression...' : 'Supprimer'}
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleUpdate} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6 space-y-8">
@@ -234,6 +249,7 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
         </div>
 
       </form>
+      <PaymentModal open={paymentOpen} onClose={()=>setPaymentOpen(false)} onSave={handlePaymentSave} partyType="supplier" partyId={id} partyName={formData.nom} />
     </div>
   )
 }

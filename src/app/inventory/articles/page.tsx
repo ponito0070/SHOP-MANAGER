@@ -20,6 +20,7 @@ type Product = {
   code_barre: string
   nom: string
   prix_achat: number
+  prix_achat_moyen?: number
   prix_vente: number
   stock_actuel: number
   stock_minimum: number
@@ -193,6 +194,7 @@ export default function ArticlesPage() {
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300">Réf</th>
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300">Désignation</th>
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 text-right">P.A</th>
+                  <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 text-right">P.A Moy</th>
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 text-right">P.V</th>
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 text-center">Stock</th>
                   <th className="p-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 text-center">Marge</th>
@@ -214,7 +216,10 @@ export default function ArticlesPage() {
                         {product.nom}
                       </td>
                       <td className="p-3 text-right text-gray-700 dark:text-gray-300">
-                        {product.prix_achat.toLocaleString()} DA
+                        {product.prix_achat?.toLocaleString?.() ?? 0} DA
+                      </td>
+                      <td className="p-3 text-right text-gray-700 dark:text-gray-300">
+                        {(product.prix_achat_moyen ?? 0).toLocaleString()} DA
                       </td>
                       <td className="p-3 text-right font-medium text-gray-900 dark:text-white">
                         {product.prix_vente.toLocaleString()} DA
