@@ -2,228 +2,221 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Edit, Trash2, Plus, X, Save } from "lucide-react";
+import { Search, Plus, Package, AlertCircle, TrendingDown, DollarSign, Boxes } from "lucide-react";
+import Link from "next/link";
 
 interface Product {
   id: string;
-  nom: string;
   code_barre: string;
-  prix_achat_moyen: number; // CORRIGÉ
-  prix_vente: number;
+  nom: string;
   stock_actuel: number;
+  prix_vente: number;
+  prix_achat_moyen: number;
+  seuil_alerte?: number;
 }
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // État formulaire (pour Ajout ET Edition)
-  const [formData, setFormData] = useState<Partial<Product>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     fetchProducts();
   }, []);
 
   const fetchProducts = async () => {
-    const { data } = await supabase.from("products").select("*").order("nom");
-    if (data) setProducts(data);
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("nom");
+
+    if (!error && data) setProducts(data);
     setLoading(false);
   };
 
-  // --- ACTIONS ---
+  const filteredProducts = products.filter(p =>
+    p.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.code_barre && p.code_barre.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer cet article définitivement ?")) return;
-    await supabase.from("products").delete().eq("id", id);
-    fetchProducts();
-  };
-
-  const handleOpenModal = (product?: Product) => {
-    if (product) {
-      setEditingId(product.id);
-      setFormData(product);
-    } else {
-      setEditingId(null);
-      setFormData({ stock_actuel: 0, prix_achat_moyen: 0, prix_vente: 0 }); // CORRIGÉ
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    // Validation
-    if (!formData.nom) return alert("Le nom est requis");
-
-    // Construction du Payload (Objet à envoyer)
-    const payload = {
-      nom: formData.nom,
-      code_barre: formData.code_barre || null, // Peut être vide
-      prix_achat_moyen: formData.prix_achat_moyen || 0, // CORRIGÉ (Mappe vers la colonne BDD)
-      prix_vente: formData.prix_vente || 0,
-      stock_actuel: formData.stock_actuel || 0
-    };
-
-    console.log("Envoi Supabase :", payload);
-
-    let error;
-    if (editingId) {
-      // UPDATE
-      const { error: err } = await supabase.from("products").update(payload).eq("id", editingId);
-      error = err;
-    } else {
-      // INSERT
-      const { error: err } = await supabase.from("products").insert([payload]);
-      error = err;
-    }
-
-    if (error) {
-      console.error("Erreur Supabase :", error);
-      alert("Erreur lors de l'enregistrement : " + error.message);
-    } else {
-      setIsModalOpen(false);
-      fetchProducts();
-    }
-  };
+  // Stats
+  const totalProducts = filteredProducts.length;
+  const lowStockProducts = filteredProducts.filter(p => p.stock_actuel <= (p.seuil_alerte || 5)).length;
+  const outOfStockProducts = filteredProducts.filter(p => p.stock_actuel === 0).length;
+  const totalStockValue = filteredProducts.reduce((sum, p) => sum + (p.stock_actuel * p.prix_achat_moyen), 0);
 
   return (
-    <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Inventaire ({products.length})</h1>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
-        >
-          <Plus size={20} /> Nouvel Article
-        </button>
-      </div>
-
-      {/* TABLEAU */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 text-sm uppercase">
-            <tr>
-              <th className="p-4">Réf / Code</th>
-              <th className="p-4">Désignation</th>
-              <th className="p-4 text-right">P.A.M.P</th>
-              <th className="p-4 text-right">Prix Vente</th>
-              <th className="p-4 text-center">Stock</th>
-              <th className="p-4 text-center">Marge Est.</th>
-              <th className="p-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-            {products.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-slate-700 transition text-gray-800 dark:text-gray-200">
-                <td className="p-4 text-gray-500 dark:text-gray-400 font-mono text-xs">{p.code_barre || "-"}</td>
-                <td className="p-4 font-medium">{p.nom}</td>
-                <td className="p-4 text-right text-gray-600 dark:text-gray-400">{p.prix_achat_moyen} DA</td>
-                <td className="p-4 text-right font-bold text-gray-800 dark:text-white">{p.prix_vente} DA</td>
-                <td className="p-4 text-center">
-                  <span className={`px-2 py-1 rounded-md text-xs font-bold 
-                    ${p.stock_actuel <= 5 ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200" : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"}`}>
-                    {p.stock_actuel}
-                  </span>
-                </td>
-                <td className="p-4 text-center text-xs text-gray-400">
-                  {p.prix_vente - p.prix_achat_moyen > 0 ? 
-                    <span className="text-green-600 dark:text-green-400">+{p.prix_vente - p.prix_achat_moyen}</span> : 
-                    "-"
-                  }
-                </td>
-                <td className="p-4 text-right space-x-2">
-                  <button onClick={() => handleOpenModal(p)} className="text-blue-500 hover:text-blue-400 p-1">
-                    <Edit size={18} />
-                  </button>
-                  <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-300 p-1">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {products.length === 0 && !loading && (
-          <div className="p-8 text-center text-gray-400">Aucun article. Commencez par en ajouter un.</div>
-        )}
-      </div>
-
-      {/* MODAL (POPUP) AJOUT/EDITION */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-slate-700 transition-colors">
-            
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                {editingId ? "Modifier l'article" : "Nouvel Article"}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                <X />
-              </button>
+    <div className="space-y-4 md:space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-orange-100 dark:bg-orange-900 p-2.5 rounded-lg">
+              <Package className="text-orange-600 dark:text-orange-300" size={24} />
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Code Barre (Ref)</label>
-                <input 
-                  type="text" 
-                  className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={formData.code_barre || ""}
-                  onChange={e => setFormData({...formData, code_barre: e.target.value})}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom du produit</label>
-                <input 
-                  type="text" 
-                  className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={formData.nom || ""}
-                  onChange={e => setFormData({...formData, nom: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prix Achat (PUMP)</label>
-                  <input 
-                    type="number" 
-                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={formData.prix_achat_moyen || 0}
-                    onChange={e => setFormData({...formData, prix_achat_moyen: parseFloat(e.target.value)})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prix Vente</label>
-                  <input 
-                    type="number" 
-                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={formData.prix_vente || 0}
-                    onChange={e => setFormData({...formData, prix_vente: parseFloat(e.target.value)})}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock Initial</label>
-                <input 
-                  type="number" 
-                  className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={formData.stock_actuel || 0}
-                  onChange={e => setFormData({...formData, stock_actuel: parseInt(e.target.value)})}
-                />
-              </div>
-
-              <button 
-                onClick={handleSave}
-                className="w-full mt-4 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 flex justify-center gap-2"
-              >
-                <Save size={20} /> Enregistrer
-              </button>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
+                Inventaire Global
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Vue d'ensemble du stock
+              </p>
             </div>
           </div>
+          <Link
+            href="/inventory/articles"
+            className="w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium min-h-[48px]"
+          >
+            <Boxes size={18} />
+            Gérer Articles
+          </Link>
         </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+            <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Articles</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{totalProducts}</div>
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+            <div className="text-xs text-red-600 dark:text-red-400 mb-1">Stock Bas</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{lowStockProducts}</div>
+          </div>
+          <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
+            <div className="text-xs text-orange-600 dark:text-orange-400 mb-1">Rupture</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{outOfStockProducts}</div>
+          </div>
+          <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg col-span-2 lg:col-span-1">
+            <div className="text-xs text-green-600 dark:text-green-400 mb-1">Valeur Stock</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{totalStockValue.toFixed(0)} DA</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <input
+            type="text"
+            placeholder="Rechercher par nom ou code-barre..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-orange-500 focus:border-transparent min-h-[48px] text-base"
+          />
+        </div>
+      </div>
+
+      {loading && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-600 border-t-transparent"></div>
+        </div>
+      )}
+
+      {!loading && (
+        <>
+          <div className="lg:hidden space-y-3">
+            {filteredProducts.map((product) => (
+              <div key={product.id} className={`bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 border-l-4 ${
+                product.stock_actuel === 0 
+                  ? 'border-red-500'
+                  : product.stock_actuel <= (product.seuil_alerte || 5)
+                  ? 'border-orange-500'
+                  : 'border-green-500'
+              }`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white text-base">{product.nom}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{product.code_barre || 'Sans code'}</div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    product.stock_actuel === 0
+                      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      : product.stock_actuel <= (product.seuil_alerte || 5)
+                      ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                      : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                  }`}>
+                    {product.stock_actuel === 0 ? 'Rupture' : product.stock_actuel <= (product.seuil_alerte || 5) ? 'Bas' : 'OK'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Stock</div>
+                    <div className="font-bold text-gray-900 dark:text-white">{product.stock_actuel}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Achat</div>
+                    <div className="text-sm text-gray-900 dark:text-white">{product.prix_achat_moyen.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Vente</div>
+                    <div className="text-sm font-medium text-green-600 dark:text-green-400">{product.prix_vente.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-slate-700">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Valeur:</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                    {(product.stock_actuel * product.prix_achat).toFixed(2)} DA
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden lg:block bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-slate-900/50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Article</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code Barre</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Stock</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P.U.M.P</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prix Vente</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Valeur</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                {filteredProducts.map((product) => (
+                  <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{product.nom}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{product.code_barre || '-'}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`font-semibold ${
+                        product.stock_actuel === 0 ? 'text-red-600' : 
+                        product.stock_actuel <= (product.seuil_alerte || 5) ? 'text-orange-600' : 
+                        'text-gray-900 dark:text-white'
+                      }`}>
+                        {product.stock_actuel}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right text-sm">{product.prix_achat_moyen.toFixed(2)} DA</td>
+                    <td className="px-6 py-4 text-right text-sm font-medium text-green-600">{product.prix_vente.toFixed(2)} DA</td>
+                    <td className="px-6 py-4 text-right font-semibold text-blue-600">{(product.stock_actuel * product.prix_achat_moyen).toFixed(2)} DA</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        product.stock_actuel === 0
+                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                          : product.stock_actuel <= (product.seuil_alerte || 5)
+                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                          : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                      }`}>
+                        {product.stock_actuel === 0 ? 'Rupture' : product.stock_actuel <= (product.seuil_alerte || 5) ? 'Bas' : 'OK'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredProducts.length === 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
+              <Package size={48} className="mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-500 dark:text-gray-400">Aucun article trouvé</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

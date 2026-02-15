@@ -1,0 +1,33 @@
+'use client'
+
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
+// ... tes imports d'icônes ...
+
+export default function Sidebar() {
+  const pathname = usePathname() // Récupère l'URL actuelle
+
+  // Fonction utilitaire pour savoir si un lien est actif
+  const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/')
+
+  return (
+    // ... ton wrapper sidebar ...
+    <nav>
+       {/* ... autres liens ... */}
+       
+       <Link 
+         href="/clients" 
+         className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+           isActive('/clients') 
+             ? 'bg-blue-600 text-white'  // Style Actif
+             : 'text-gray-400 hover:bg-gray-800 hover:text-white' // Style Inactif
+         }`}
+       >
+         <IconClients className="w-5 h-5" />
+         <span>Clients</span>
+       </Link>
+
+       {/* ... suite ... */}
+    </nav>
+  )
+}

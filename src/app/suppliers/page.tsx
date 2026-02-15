@@ -1,211 +1,313 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import Link from 'next/link'
-import { Truck, Plus, Search } from 'lucide-react'
-import PaymentModal from '@/components/PaymentModal'
+import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import Link from "next/link";
+import { Search, Plus, Truck, Phone, Mail, MapPin, Eye, CreditCard } from "lucide-react";
+import PaymentModal from "@/components/PaymentModal";
 
 type Supplier = {
-  id: string
-  nom: string
-  email: string
-  telephone: string
-  adresse: string
-  solde: number
-}
+  id: string;
+  nom: string;
+  email: string;
+  telephone: string;
+  ville: string;
+  solde: number;
+};
 
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [paymentOpen, setPaymentOpen] = useState(false)
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  );
 
   const filteredSuppliers = suppliers.filter((supplier) => {
-    const name = supplier.nom?.toLowerCase() || ''
-    const email = supplier.email?.toLowerCase() || ''
-    const phone = supplier.telephone?.toLowerCase() || ''
-    const term = searchTerm.toLowerCase()
-    return name.includes(term) || email.includes(term) || phone.includes(term)
-  })
+    const name = supplier.nom.toLowerCase();
+    const phone = supplier.telephone?.toLowerCase() || "";
+    const term = searchTerm.toLowerCase();
+    return name.includes(term) || phone.includes(term);
+  });
 
   useEffect(() => {
     async function fetchSuppliers() {
       const { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .from("suppliers")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error('Erreur chargement fournisseurs:', error)
-      } else {
-        setSuppliers(data || [])
-      }
-      setLoading(false)
+      if (!error && data) setSuppliers(data);
+      setLoading(false);
     }
-
-    fetchSuppliers()
-  }, [])
+    fetchSuppliers();
+  }, []);
 
   const handlePaymentSave = async (amount: number, note?: string) => {
-    if (!selectedSupplier) return
+  if (!selectedSupplier) return;
+  
+  try {
+    const response = await fetch("/api/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        party_type: "supplier",
+        party_id: selectedSupplier.id,
+        amount,
+        note: note || "",
+      }),
+    });
 
-    try {
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          party_type: 'supplier',
-          party_id: selectedSupplier.id,
-          amount,
-          note: note || '',
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        alert(`Erreur: ${error.message}`)
-        return
-      }
-
-      const result = await response.json()
-      
-      // Update supplier solde
-      setSuppliers(suppliers.map((s) =>
-        s.id === selectedSupplier.id ? { ...s, solde: result.new_balance } : s
-      ))
-      
-      setPaymentOpen(false)
-      setSelectedSupplier(null)
-    } catch (error) {
-      console.error('Erreur lors du paiement:', error)
-      alert('Erreur lors du traitement du paiement')
+    if (!response.ok) {
+      alert("Erreur paiement");
+      return;
     }
+
+    const result = await response.json();
+    setSuppliers(suppliers.map((s) =>
+      s.id === selectedSupplier.id ? { ...s, solde: result.new_balance } : s
+    ));
+    
+    setPaymentOpen(false);
+    setSelectedSupplier(null);
+  } catch (error) {
+    console.error(error);
+    alert("Erreur");
   }
+};
+
+
+  const totalSuppliers = suppliers.length;
+  const suppliersWithDebt = suppliers.filter(s => s.solde > 0).length;
+  const totalDebt = suppliers.reduce((sum, s) => sum + (s.solde > 0 ? s.solde : 0), 0);
 
   return (
-    <div className="p-8 space-y-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <Truck className="text-blue-600" size={32} />
-            Fournisseurs
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400">Gérez vos fournisseurs et partenaires</p>
+    <div className="space-y-4 md:space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-teal-100 dark:bg-teal-900 p-2.5 rounded-lg">
+              <Truck className="text-teal-600 dark:text-teal-300" size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Fournisseurs</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Gérez vos fournisseurs</p>
+            </div>
+          </div>
+          <Link
+            href="/suppliers/nouveau"
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium min-h-[48px]"
+          >
+            <Plus size={18} />
+            Nouveau Fournisseur
+          </Link>
         </div>
-        <Link 
-          href="/suppliers/nouveau" 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 shadow-md"
-        >
-          <Plus size={20} />
-          Nouveau Fournisseur
-        </Link>
-      </div>
 
-      {/* Search Input */}
-      <div className="relative">
-        <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-        <input
-          type="text"
-          placeholder="Rechercher par nom, email ou téléphone..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500 dark:text-gray-400">Chargement des fournisseurs...</div>
-        ) : suppliers.length === 0 ? (
-          <div className="p-12 text-center">
-            <Truck size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-            <p className="text-gray-500 dark:text-gray-400 mb-4">Aucun fournisseur trouvé.</p>
-            <Link 
-              href="/suppliers/nouveau" 
-              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
-            >
-              Créer le premier fournisseur
-            </Link>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+            <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Fournisseurs</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{totalSuppliers}</div>
           </div>
-        ) : filteredSuppliers.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 dark:text-gray-400 mb-4">Aucun résultat pour cette recherche.</p>
+          <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
+            <div className="text-xs text-orange-600 dark:text-orange-400 mb-1">À Payer</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{suppliersWithDebt}</div>
           </div>
-        ) : (
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 text-sm uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
-                <th className="px-6 py-2 font-semibold">Nom</th>
-                <th className="px-6 py-2 font-semibold">Contact</th>
-                <th className="px-6 py-2 font-semibold">Adresse</th>
-                <th className="px-6 py-2 font-semibold text-right">Solde</th>
-                <th className="px-6 py-2 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {filteredSuppliers.map((supplier) => (
-                <tr key={supplier.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                  <td className="px-6 py-2 font-medium text-gray-900 dark:text-white">
-                    {supplier.nom}
-                  </td>
-                  <td className="px-6 py-2 text-gray-600 dark:text-gray-300 text-sm">
-                    <div className="flex flex-col">
-                      <span>{supplier.email || '-'}</span>
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">{supplier.telephone || '-'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-2 text-gray-600 dark:text-gray-300 text-sm">
-                    {supplier.adresse || '-'}
-                  </td>
-                  <td className={`px-6 py-2 text-right font-medium ${supplier.solde < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                    {supplier.solde?.toFixed(2)} DA
-                  </td>
-                  <td className="px-6 py-2 text-right space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedSupplier(supplier)
-                        setPaymentOpen(true)
-                      }}
-                      className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 text-sm font-medium"
-                    >
-                      Payer
-                    </button>
-                    <Link 
-                      href={`/suppliers/${supplier.id}`}
-                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium"
-                    >
-                      Détails
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+          <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg col-span-2 lg:col-span-1">
+            <div className="text-xs text-red-600 dark:text-red-400 mb-1">Montant Dû</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{totalDebt.toFixed(2)} DA</div>
+          </div>
+        </div>
       </div>
 
-      {/* Payment Modal */}
-      {selectedSupplier && (
-        <PaymentModal
-          open={paymentOpen}
-          onClose={() => {
-            setPaymentOpen(false)
-            setSelectedSupplier(null)
-          }}
-          onSave={handlePaymentSave}
-          partyType="supplier"
-          partyId={selectedSupplier.id}
-          partyName={selectedSupplier.nom}
-        />
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <input
+            type="text"
+            placeholder="Rechercher par nom ou téléphone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-teal-500 min-h-[48px] text-base"
+          />
+        </div>
+      </div>
+
+      {loading && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-teal-600 border-t-transparent"></div>
+        </div>
       )}
+
+      {!loading && (
+        <>
+          <div className="lg:hidden space-y-3">
+            {filteredSuppliers.map((supplier) => (
+              <div key={supplier.id} className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 border-l-4 border-teal-500">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white text-base">{supplier.nom}</div>
+                    {supplier.telephone && (
+                      <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <Phone size={14} />
+                        {supplier.telephone}
+                      </div>
+                    )}
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    supplier.solde > 0
+                      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      : supplier.solde < 0
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+                  }`}>
+                    {supplier.solde > 0 ? 'À payer' : supplier.solde < 0 ? 'Avance' : 'OK'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 mb-3">
+                  {supplier.email && (
+                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                      <Mail size={14} />
+                      <span className="truncate">{supplier.email}</span>
+                    </div>
+                  )}
+                  {supplier.ville && (
+                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                      <MapPin size={14} />
+                      {supplier.ville}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-slate-700 mb-3">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Solde:</span>
+                  <span className={`text-lg font-bold ${
+                    supplier.solde > 0 ? 'text-red-600 dark:text-red-400' : 
+                    supplier.solde < 0 ? 'text-green-600 dark:text-green-400' : 
+                    'text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {supplier.solde.toFixed(2)} DA
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href={`/suppliers/${supplier.id}`}
+                    className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]"
+                  >
+                    <Eye size={16} />
+                    Détails
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setSelectedSupplier(supplier);
+                      setPaymentOpen(true);
+                    }}
+                    className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]"
+                  >
+                    <CreditCard size={16} />
+                    Paiement
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden lg:block bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-slate-900/50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fournisseur</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ville</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Solde</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                {filteredSuppliers.map((supplier) => (
+                  <tr key={supplier.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{supplier.nom}</td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-1">
+                        {supplier.telephone && (
+                          <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                            <Phone size={14} />
+                            {supplier.telephone}
+                          </div>
+                        )}
+                        {supplier.email && (
+                          <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                            <Mail size={14} />
+                            {supplier.email}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{supplier.ville || "-"}</td>
+                    <td className="px-6 py-4 text-right">
+                      <span className={`font-semibold ${
+                        supplier.solde > 0 ? 'text-red-600 dark:text-red-400' : 
+                        supplier.solde < 0 ? 'text-green-600 dark:text-green-400' : 
+                        'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {supplier.solde.toFixed(2)} DA
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <Link
+                          href={`/suppliers/${supplier.id}`}
+                          className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"
+                          title="Détails"
+                        >
+                          <Eye size={18} className="text-gray-600 dark:text-gray-400" />
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setSelectedSupplier(supplier);
+                            setPaymentOpen(true);
+                          }}
+                          className="p-2 hover:bg-teal-100 dark:hover:bg-teal-900/20 rounded-lg"
+                          title="Paiement"
+                        >
+                          <CreditCard size={18} className="text-teal-600 dark:text-teal-400" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredSuppliers.length === 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
+              <Truck size={48} className="mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-500 dark:text-gray-400">Aucun fournisseur trouvé</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {paymentOpen && selectedSupplier && (
+  <PaymentModal
+    isOpen={paymentOpen}
+    onClose={() => {
+      setPaymentOpen(false);
+      setSelectedSupplier(null);
+    }}
+    partyType="supplier"
+    partyId={selectedSupplier.id}
+    partyName={selectedSupplier.nom}
+    currentBalance={selectedSupplier.solde}
+    onPaymentSave={handlePaymentSave}
+  />
+)}
     </div>
-  )
+  );
 }
