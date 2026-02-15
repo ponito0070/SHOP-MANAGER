@@ -237,7 +237,7 @@ export default function FinancePage() {
         "Bénéfice net": netProfit,
       },
       sales.map((s) => ({
-        date: formatDateFR(s.created_at),
+        date: formatDateFR(s.date_vente),
         total: s.total_vente,
       })),
       [
@@ -262,7 +262,7 @@ export default function FinancePage() {
       {
         name: "Ventes",
         data: sales.map((s) => ({
-          Date: formatDateFR(s.created_at),
+          Date: formatDateFR(s.date_vente),
           Total: s.total_vente,
         })),
       },

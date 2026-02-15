@@ -46,10 +46,19 @@ BEGIN
   v_table_name := CASE WHEN p_party_type = 'client' THEN 'clients' ELSE 'suppliers' END;
   
   -- Update balance
-  EXECUTE format(
-    'UPDATE %I SET solde = solde - $1 WHERE id = $2 RETURNING solde',
-    v_table_name
-  ) USING p_amount, p_party_id INTO v_new_balance;
+  -- For clients: Add the amount (payment received increases balance, reduces debt)
+  -- For suppliers: Subtract the amount (payment reduces what we owe)
+  IF p_party_type = 'client' THEN
+    EXECUTE format(
+      'UPDATE %I SET solde = solde + $1 WHERE id = $2 RETURNING solde',
+      v_table_name
+    ) USING p_amount, p_party_id INTO v_new_balance;
+  ELSE
+    EXECUTE format(
+      'UPDATE %I SET solde = solde - $1 WHERE id = $2 RETURNING solde',
+      v_table_name
+    ) USING p_amount, p_party_id INTO v_new_balance;
+  END IF;
   
   -- Return success
   RETURN QUERY SELECT TRUE, 'Payment recorded successfully', v_new_balance;

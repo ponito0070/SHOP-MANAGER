@@ -14,10 +14,7 @@ ALTER TABLE purchases
 ADD COLUMN IF NOT EXISTS remise_flat NUMERIC(12, 2) DEFAULT 0;
 
 ALTER TABLE purchase_items 
-ADD COLUMN IF NOT EXISTS remise_flat NUMERIC(12, 2) DEFAULT 0;
-
--- Ajouter remise_pourcentage à purchase_items si absent (pour cohérence avec sale_items)
-ALTER TABLE purchase_items 
+ADD COLUMN IF NOT EXISTS remise_flat NUMERIC(12, 2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS remise_pourcentage NUMERIC(5, 2) DEFAULT 0;
 
 -- Ajouter indice pour la performance (optionnel)
