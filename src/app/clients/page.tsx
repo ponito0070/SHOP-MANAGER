@@ -347,8 +347,7 @@ export default function ClientsPage() {
           partyType="client"
           partyId={selectedClient.id}
           partyName={`${selectedClient.nom} ${selectedClient.prenom}`}
-          currentBalance={selectedClient.solde}
-          onPaymentSave={handlePaymentSave}
+          onSave={handlePaymentSave}
         />
       )}
     </div>
