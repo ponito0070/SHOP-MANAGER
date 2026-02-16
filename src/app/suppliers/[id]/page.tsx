@@ -1,6 +1,6 @@
 'use client'
-
-import { useEffect, useState, use } from 'react'
+import * as React from 'react'
+import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -8,7 +8,8 @@ import { ArrowLeft, Save, Trash2, Truck } from 'lucide-react'
 import PaymentModal from '@/components/PaymentModal'
 
 export default function DetailSupplierPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+  // ✅ On unwrap la Promise avec React.use()
+  const { id } = React.use(params)
   
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -16,6 +17,7 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
   const [deleting, setDeleting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
+  
   const [formData, setFormData] = useState({
     nom: '',
     email: '',
@@ -57,7 +59,9 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
       setLoading(false)
     }
 
-    fetchSupplier()
+    if (id) {
+      fetchSupplier()
+    }
   }, [id])
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -100,7 +104,7 @@ export default function DetailSupplierPage({ params }: { params: Promise<{ id: s
         return
       }
       
-      // Update local state with new balance
+      // Mettre à jour le solde local
       setFormData(prev => ({ ...prev, solde: data.newBalance || prev.solde }))
       setPaymentOpen(false)
     } catch (error) {

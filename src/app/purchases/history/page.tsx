@@ -5,16 +5,15 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   Search,
   Plus,
-  FileText,
   Eye,
   Printer,
   ChevronLeft,
   ChevronRight,
   Truck,
   Package,
-  TrendingUp
 } from "lucide-react";
 import Link from "next/link";
+import OrderDetailsModal from "@/components/OrderDetailsModal";
 
 interface Purchase {
   id: string;
@@ -22,8 +21,9 @@ interface Purchase {
   total_achat: number;
   date_achat: string;
   suppliers: { nom: string } | null;
-  profiles: { full_name: string } | null;
+  user_full_name?: string | null; // On stocke le nom ici
   is_void?: boolean;
+  user_id?: string;
 }
 
 export default function PurchasesHistoryPage() {
@@ -33,6 +33,8 @@ export default function PurchasesHistoryPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -41,18 +43,47 @@ export default function PurchasesHistoryPage() {
 
   const fetchPurchases = async () => {
     setLoading(true);
+    
+    // 1. Récupérer les achats avec le fournisseur
     const { data, error } = await supabase
       .from("purchases")
-      .select(`*, suppliers (nom), profiles (full_name)`)
+      .select(`
+        *,
+        suppliers (nom)
+      `)
       .gte("date_achat", `${startDate}T00:00:00`)
       .lte("date_achat", `${endDate}T23:59:59`)
       .order("date_achat", { ascending: false });
 
     if (error) {
       console.error("Erreur:", error);
-    } else {
-      setPurchases(data as any);
+      setLoading(false);
+      return;
     }
+
+    // 2. Pour chaque achat, récupérer le nom de l'utilisateur si user_id existe
+    const purchasesWithUsers = await Promise.all(
+      (data || []).map(async (purchase: any) => {
+        if (purchase.user_id) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", purchase.user_id)
+            .maybeSingle();
+          
+          return {
+            ...purchase,
+            user_full_name: profile?.full_name || null
+          };
+        }
+        return {
+          ...purchase,
+          user_full_name: null
+        };
+      })
+    );
+
+    setPurchases(purchasesWithUsers);
     setLoading(false);
   };
 
@@ -61,13 +92,12 @@ export default function PurchasesHistoryPage() {
     newStart.setDate(newStart.getDate() + days);
     const newEnd = new Date(endDate);
     newEnd.setDate(newEnd.getDate() + days);
-
     setStartDate(newStart.toISOString().split("T")[0]);
     setEndDate(newEnd.toISOString().split("T")[0]);
   };
 
   const filteredPurchases = purchases.filter(p =>
-    p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.suppliers?.nom || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -77,8 +107,7 @@ export default function PurchasesHistoryPage() {
     currentPage * itemsPerPage
   );
 
-  // Stats
-  const totalPurchases = filteredPurchases.reduce((sum, p) => sum + p.total_achat, 0);
+  const totalPurchases = filteredPurchases.reduce((sum, p) => sum + (p.total_achat || 0), 0);
   const averagePurchase = filteredPurchases.length > 0 ? totalPurchases / filteredPurchases.length : 0;
 
   return (
@@ -214,7 +243,7 @@ export default function PurchasesHistoryPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500 dark:text-gray-400">Agent:</span>
                     <span className="text-gray-900 dark:text-white text-xs">
-                      {purchase.profiles?.full_name || 'N/A'}
+                      {purchase.user_full_name || 'N/A'}
                     </span>
                   </div>
                 </div>
@@ -222,16 +251,25 @@ export default function PurchasesHistoryPage() {
                 <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-slate-700 mb-3">
                   <span className="text-sm text-gray-500 dark:text-gray-400">Total:</span>
                   <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                    {purchase.total_achat.toFixed(2)} DA
+                    {purchase.total_achat?.toFixed(2) || '0'} DA
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <button className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]">
+                  <button
+                    onClick={() => {
+                      setSelectedOrderId(purchase.id);
+                      setIsModalOpen(true);
+                    }}
+                    className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]"
+                  >
                     <Eye size={16} />
                     Détails
                   </button>
-                  <button className="bg-green-600 hover:bg-green-700 text-white px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]">
+                  <button
+                    onClick={() => console.log("Imprimer", purchase.reference)}
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm min-h-[44px]"
+                  >
                     <Printer size={16} />
                     Imprimer
                   </button>
@@ -267,19 +305,30 @@ export default function PurchasesHistoryPage() {
                         {purchase.suppliers?.nom || 'N/A'}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                        {purchase.profiles?.full_name || 'N/A'}
+                        {purchase.user_full_name || 'N/A'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="font-semibold text-green-600 dark:text-green-400">
-                          {purchase.total_achat.toFixed(2)} DA
+                          {purchase.total_achat?.toFixed(2) || '0'} DA
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-center gap-2">
-                          <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Détails">
+                          <button
+                            onClick={() => {
+                              setSelectedOrderId(purchase.id);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                            title="Détails"
+                          >
                             <Eye size={18} className="text-gray-600 dark:text-gray-400" />
                           </button>
-                          <button className="p-2 hover:bg-green-100 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="Imprimer">
+                          <button
+                            onClick={() => console.log("Imprimer", purchase.reference)}
+                            className="p-2 hover:bg-green-100 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                            title="Imprimer"
+                          >
                             <Printer size={18} className="text-green-600 dark:text-green-400" />
                           </button>
                         </div>
@@ -299,32 +348,45 @@ export default function PurchasesHistoryPage() {
           )}
 
           {/* PAGINATION */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
-              Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, filteredPurchases.length)} sur {filteredPurchases.length}
+          {filteredPurchases.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
+              <div className="text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
+                Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, filteredPurchases.length)} sur {filteredPurchases.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2.5 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] text-center">
+                  Page {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2.5 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2.5 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <span className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] text-center">
-                Page {currentPage} / {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2.5 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
+          )}
         </>
       )}
+
+      {/* MODALE DE DÉTAILS */}
+      <OrderDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedOrderId(null);
+          fetchPurchases();
+        }}
+        orderId={selectedOrderId}
+      />
     </div>
   );
 }

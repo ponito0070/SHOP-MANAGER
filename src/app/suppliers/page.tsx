@@ -6,13 +6,20 @@ import Link from "next/link";
 import { Search, Plus, Truck, Phone, Mail, MapPin, Eye, CreditCard } from "lucide-react";
 import PaymentModal from "@/components/PaymentModal";
 
+const getSupplierBalance = (solde?: number | null) => {
+  if (typeof solde === "number" && Number.isFinite(solde)) {
+    return solde;
+  }
+  return 0;
+};
+
 type Supplier = {
   id: string;
   nom: string;
   email: string;
   telephone: string;
   ville: string;
-  solde: number;
+  solde?: number | null;
 };
 
 export default function SuppliersPage() {
@@ -27,66 +34,82 @@ export default function SuppliersPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const filteredSuppliers = suppliers.filter((supplier) => {
-    const name = supplier.nom.toLowerCase();
-    const phone = supplier.telephone?.toLowerCase() || "";
-    const term = searchTerm.toLowerCase();
-    return name.includes(term) || phone.includes(term);
-  });
-
   useEffect(() => {
     async function fetchSuppliers() {
+      setLoading(true); // S'assurer que loading est true au début
+      
       const { data, error } = await supabase
         .from("suppliers")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!error && data) setSuppliers(data);
-      setLoading(false);
+      if (!error && data) {
+        setSuppliers(data.map((supplier) => ({ 
+          ...supplier, 
+          solde: getSupplierBalance(supplier.solde) 
+        })));
+      }
+      
+      setLoading(false); // ← TRÈS IMPORTANT : mettre à false après chargement
     }
+    
     fetchSuppliers();
-  }, []);
+  }, []); // Dépendances vides = exécuté une seule fois
+
+  const filteredSuppliers = suppliers.filter((supplier) => {
+    const name = supplier.nom?.toLowerCase() || "";
+    const phone = supplier.telephone?.toLowerCase() || "";
+    const term = searchTerm.toLowerCase();
+    return name.includes(term) || phone.includes(term);
+  });
 
   const handlePaymentSave = async (amount: number, note?: string) => {
-  if (!selectedSupplier) return;
-  
-  try {
-    const response = await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        party_type: "supplier",
-        party_id: selectedSupplier.id,
-        amount,
-        note: note || "",
-      }),
-    });
-
-    if (!response.ok) {
-      alert("Erreur paiement");
-      return;
-    }
-
-    const result = await response.json();
-    setSuppliers(suppliers.map((s) =>
-      s.id === selectedSupplier.id ? { ...s, solde: result.new_balance } : s
-    ));
+    if (!selectedSupplier) return;
     
-    setPaymentOpen(false);
-    setSelectedSupplier(null);
-  } catch (error) {
-    console.error(error);
-    alert("Erreur");
-  }
-};
+    try {
+      const response = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          party_type: "supplier",
+          party_id: selectedSupplier.id,
+          amount,
+          note: note || "",
+        }),
+      });
 
+      if (!response.ok) {
+        alert("Erreur paiement");
+        return;
+      }
+
+      const result = await response.json();
+      
+      // Mettre à jour le solde local
+      setSuppliers(suppliers.map((s) =>
+        s.id === selectedSupplier.id
+          ? { ...s, solde: getSupplierBalance(result.new_balance) }
+          : s
+      ));
+      
+      setPaymentOpen(false);
+      setSelectedSupplier(null);
+    } catch (error) {
+      console.error(error);
+      alert("Erreur");
+    }
+  };
 
   const totalSuppliers = suppliers.length;
-  const suppliersWithDebt = suppliers.filter(s => s.solde > 0).length;
-  const totalDebt = suppliers.reduce((sum, s) => sum + (s.solde > 0 ? s.solde : 0), 0);
+  const suppliersWithDebt = suppliers.filter((supplier) => getSupplierBalance(supplier.solde) > 0).length;
+  const totalDebt = suppliers.reduce((sum, supplier) => {
+    const balance = getSupplierBalance(supplier.solde);
+    return sum + (balance > 0 ? balance : 0);
+  }, 0);
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {/* HEADER */}
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 md:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -107,6 +130,7 @@ export default function SuppliersPage() {
           </Link>
         </div>
 
+        {/* STATS */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
             <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Fournisseurs</div>
@@ -123,6 +147,7 @@ export default function SuppliersPage() {
         </div>
       </div>
 
+      {/* RECHERCHE */}
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
@@ -136,14 +161,18 @@ export default function SuppliersPage() {
         </div>
       </div>
 
+      {/* LOADING */}
       {loading && (
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-teal-600 border-t-transparent"></div>
+          <p className="text-gray-500 dark:text-gray-400 mt-2">Chargement...</p>
         </div>
       )}
 
+      {/* LISTE */}
       {!loading && (
         <>
+          {/* MOBILE CARDS */}
           <div className="lg:hidden space-y-3">
             {filteredSuppliers.map((supplier) => (
               <div key={supplier.id} className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 border-l-4 border-teal-500">
@@ -158,13 +187,13 @@ export default function SuppliersPage() {
                     )}
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    supplier.solde > 0
+                    getSupplierBalance(supplier.solde) > 0
                       ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                      : supplier.solde < 0
+                      : getSupplierBalance(supplier.solde) < 0
                       ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                       : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
                   }`}>
-                    {supplier.solde > 0 ? 'À payer' : supplier.solde < 0 ? 'Avance' : 'OK'}
+                    {getSupplierBalance(supplier.solde) > 0 ? 'À payer' : getSupplierBalance(supplier.solde) < 0 ? 'Avance' : 'OK'}
                   </span>
                 </div>
 
@@ -186,11 +215,11 @@ export default function SuppliersPage() {
                 <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-slate-700 mb-3">
                   <span className="text-sm text-gray-500 dark:text-gray-400">Solde:</span>
                   <span className={`text-lg font-bold ${
-                    supplier.solde > 0 ? 'text-red-600 dark:text-red-400' : 
-                    supplier.solde < 0 ? 'text-green-600 dark:text-green-400' : 
+                    getSupplierBalance(supplier.solde) > 0 ? 'text-red-600 dark:text-red-400' : 
+                    getSupplierBalance(supplier.solde) < 0 ? 'text-green-600 dark:text-green-400' : 
                     'text-gray-600 dark:text-gray-400'
                   }`}>
-                    {supplier.solde.toFixed(2)} DA
+                    {getSupplierBalance(supplier.solde).toFixed(2)} DA
                   </span>
                 </div>
 
@@ -217,6 +246,7 @@ export default function SuppliersPage() {
             ))}
           </div>
 
+          {/* DESKTOP TABLE */}
           <div className="hidden lg:block bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-slate-900/50">
@@ -251,11 +281,11 @@ export default function SuppliersPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{supplier.ville || "-"}</td>
                     <td className="px-6 py-4 text-right">
                       <span className={`font-semibold ${
-                        supplier.solde > 0 ? 'text-red-600 dark:text-red-400' : 
-                        supplier.solde < 0 ? 'text-green-600 dark:text-green-400' : 
+                        getSupplierBalance(supplier.solde) > 0 ? 'text-red-600 dark:text-red-400' : 
+                        getSupplierBalance(supplier.solde) < 0 ? 'text-green-600 dark:text-green-400' : 
                         'text-gray-600 dark:text-gray-400'
                       }`}>
-                        {supplier.solde.toFixed(2)} DA
+                        {getSupplierBalance(supplier.solde).toFixed(2)} DA
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -285,6 +315,7 @@ export default function SuppliersPage() {
             </table>
           </div>
 
+          {/* EMPTY STATE */}
           {filteredSuppliers.length === 0 && (
             <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-8 text-center">
               <Truck size={48} className="mx-auto mb-4 text-gray-400" />
@@ -294,20 +325,20 @@ export default function SuppliersPage() {
         </>
       )}
 
+      {/* PAYMENT MODAL */}
       {paymentOpen && selectedSupplier && (
-  <PaymentModal
-    isOpen={paymentOpen}
-    onClose={() => {
-      setPaymentOpen(false);
-      setSelectedSupplier(null);
-    }}
-    partyType="supplier"
-    partyId={selectedSupplier.id}
-    partyName={selectedSupplier.nom}
-    currentBalance={selectedSupplier.solde}
-    onPaymentSave={handlePaymentSave}
-  />
-)}
+        <PaymentModal
+          open={paymentOpen}
+          onClose={() => {
+            setPaymentOpen(false);
+            setSelectedSupplier(null);
+          }}
+          onSave={handlePaymentSave}
+          partyType="supplier"
+          partyId={selectedSupplier.id}
+          partyName={selectedSupplier.nom}
+        />
+      )}
     </div>
   );
 }

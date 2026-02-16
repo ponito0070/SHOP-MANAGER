@@ -7,7 +7,7 @@ import { X, Save } from 'lucide-react'
 type CreateClientModalProps = {
   isOpen: boolean
   onClose: () => void
-  onSuccess: (newClient: any) => void // Renommé pour clarté
+  onSuccess?: (newClient: any) => void // ← Rendre optionnel avec ?
 }
 
 export default function CreateClientModal({ isOpen, onClose, onSuccess }: CreateClientModalProps) {
@@ -25,7 +25,6 @@ export default function CreateClientModal({ isOpen, onClose, onSuccess }: Create
     e.preventDefault()
     setLoading(true)
 
-    // Création rapide
     const { data, error } = await supabase
       .from('clients')
       .insert([{ nom: formData.nom, telephone: formData.telephone }])
@@ -35,8 +34,11 @@ export default function CreateClientModal({ isOpen, onClose, onSuccess }: Create
     if (error) {
       alert('Erreur création client: ' + error.message)
     } else {
-      onSuccess(data) // Appel correct unique
-      setFormData({ nom: '', telephone: '' }) // Reset
+      // ✅ Vérifier que onSuccess existe avant de l'appeler
+      if (onSuccess) {
+        onSuccess(data)
+      }
+      setFormData({ nom: '', telephone: '' })
       onClose()
     }
     setLoading(false)

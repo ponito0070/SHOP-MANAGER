@@ -667,11 +667,11 @@ if (stockErrors.length > 0) {
         <CreateClientModal
           isOpen={isClientModalOpen}
           onClose={() => setIsClientModalOpen(false)}
-          onClientCreated={(newClient) => {
-            setClients(prev => [newClient, ...prev]);
-            setSelectedClient(newClient.id);
-          }}
-        />
+          onClientCreated={(newClient) => {  // ← La prop s'appelle onClientCreated
+          setClients(prev => [newClient, ...prev]);
+          setSelectedClient(newClient.id);
+  }}
+/>
       )}
 
       {isProductModalOpen && (
