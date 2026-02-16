@@ -425,11 +425,11 @@ export default function SalesHistoryPage() {
 
       {voidOpen && selectedId && (
         <VoidConfirm
-          isOpen={voidOpen}
-          onClose={() => {
-            setVoidOpen(false);
-            setSelectedId(null);
-          }}
+    open={voidOpen}             // ✅ Utiliser 'open' au lieu de 'isOpen'
+    onClose={() => {
+      setVoidOpen(false);
+      setSelectedId(null);
+    }}
           onConfirm={() => {
             const sale = sales.find(s => s.id === selectedId);
             if (sale) handleToggleVoid(selectedId, sale.is_void || false);
