@@ -665,9 +665,9 @@ if (stockErrors.length > 0) {
       {/*MODALS*/}
 {isClientModalOpen && (
   <CreateClientModal
-    open={isClientModalOpen}              // Change isOpen à open
+    isOpen={isClientModalOpen}              // Change isOpen à open
     onClose={() => setIsClientModalOpen(false)}  // Corrige la faute de frappe
-    onClientCreated={(newClient)=>{      // Corrige onclientCreated à onClientCreated
+    onSuccess={(newClient: Client)=>{      // Corrige onclientCreated à onClientCreated
       setClients(prev => [newClient, ...prev]);
       setSelectedClient(newClient.id);      // Corrige setSelectedclient à setSelectedClient
     }}
@@ -676,9 +676,9 @@ if (stockErrors.length > 0) {
 
 {isProductModalOpen && (
   <CreateProductModal
-    open={isProductModalOpen}              // Change isOpen à open
+    isOpen={isProductModalOpen}              // Change isOpen à open
     onClose={() => setIsProductModalOpen(false)}  // Corrige la faute de frappe
-    onProductCreated={handleProductCreated}  // Corrige la parenthèse fermante
+    onSuccess={handleProductCreated}  // Corrige la parenthèse fermante
   />
 )}
     </div>
