@@ -294,20 +294,20 @@ export default function SuppliersPage() {
         </>
       )}
 
-      {paymentOpen && selectedSupplier && (
-        <PaymentModal
-          isOpen={paymentOpen}
-          onClose={() => {
-            setPaymentOpen(false);
-            setSelectedSupplier(null);
-          }}
-          partyType="supplier"
-          partyId={selectedSupplier.id}
-          partyName={selectedSupplier.nom}
-          currentBalance={selectedSupplier.solde}
-          onPaymentSave={handlePaymentSave}
-        />
-      )}
+{paymentOpen && selectedSupplier && (
+  <PaymentModal
+    open={paymentOpen}  // ✅ Use 'open' instead of 'isOpen'
+    onClose={() => {
+      setPaymentOpen(false);
+      setSelectedSupplier(null);
+    }}
+    partyType="supplier"
+    partyId={selectedSupplier.id}
+    partyName={selectedSupplier.nom}
+    currentBalance={selectedSupplier.solde}
+    onPaymentSave={handlePaymentSave}
+  />
+)}
     </div>
   );
 }

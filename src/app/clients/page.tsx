@@ -339,7 +339,7 @@ export default function ClientsPage() {
       {/* MODAL PAIEMENT */}
       {paymentOpen && selectedClient && (
         <PaymentModal
-          isOpen={paymentOpen}
+          open={paymentOpen}
           onClose={() => {
             setPaymentOpen(false);
             setSelectedClient(null);
