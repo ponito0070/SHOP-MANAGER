@@ -156,7 +156,7 @@ export default function InventoryPage() {
                 <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-slate-700">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Valeur:</span>
                   <span className="font-bold text-blue-600 dark:text-blue-400">
-                    {(product.stock_actuel * product.prix_achat).toFixed(2)} DA
+                    {(product.stock_actuel * product.prix_achat_moyen).toFixed(2)} DA
                   </span>
                 </div>
               </div>

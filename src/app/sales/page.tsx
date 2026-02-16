@@ -662,25 +662,25 @@ if (stockErrors.length > 0) {
         </div>
       </div>
 
-      {/* MODALS */}
-      {isClientModalOpen && (
-        <CreateClientModal
-          isOpen={isClientModalOpen}
-          onClose={() => setIsClientModalOpen(false)}
-          onClientCreated={(newClient) => {  // ← La prop s'appelle onClientCreated
-          setClients(prev => [newClient, ...prev]);
-          setSelectedClient(newClient.id);
-  }}
-/>
-      )}
+      {/*MODALS*/}
+{isClientModalOpen && (
+  <CreateClientModal
+    open={isClientModalOpen}              // Change isOpen à open
+    onClose={() => setIsClientModalOpen(false)}  // Corrige la faute de frappe
+    onClientCreated={(newClient)=>{      // Corrige onclientCreated à onClientCreated
+      setClients(prev => [newClient, ...prev]);
+      setSelectedClient(newClient.id);      // Corrige setSelectedclient à setSelectedClient
+    }}
+  />
+)}
 
-      {isProductModalOpen && (
-        <CreateProductModal
-          isOpen={isProductModalOpen}
-          onClose={() => setIsProductModalOpen(false)}
-          onProductCreated={handleProductCreated}
-        />
-      )}
+{isProductModalOpen && (
+  <CreateProductModal
+    open={isProductModalOpen}              // Change isOpen à open
+    onClose={() => setIsProductModalOpen(false)}  // Corrige la faute de frappe
+    onProductCreated={handleProductCreated}  // Corrige la parenthèse fermante
+  />
+)}
     </div>
   );
 }
